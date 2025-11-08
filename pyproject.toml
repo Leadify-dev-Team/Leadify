@@ -1,8 +1,7 @@
 [project]
 name = "tipp-app"
 version = "0.1.0"
-description = "Lead Management App zur systematischen Generierung 
-und Bearbeitung von eingehenden Leads über eine mobile, sowie Desktop-Anwendung."
+description = "Lead Management App zur systematischen Generierung und Bearbeitung von eingehenden Leads über eine mobile, sowie Desktop-Anwendung."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
