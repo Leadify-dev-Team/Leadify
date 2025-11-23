@@ -669,14 +669,20 @@ class LeadDetailView:
             
             self.page.open(comment_dialog)
         
+        def on_besuchsbericht(e):
+            """Öffnet Dialog für "Besuchsbericht erstellen" Option"""
+            self.page.close(dialog)
+            self._show_besuchsbericht_dialog()
+        
         def on_option_click(option_type):
             def handler(e):
                 if option_type == "comment":
                     on_accept_with_comment(e)
+                elif option_type == "report":
+                    on_besuchsbericht(e)
                 else:
                     # TODO: Implementiere Funktionalität für:
                     # - "offer": Angebot erstellen
-                    # - "report": Besuchsbericht erstellen
                     self.page.close(dialog)
             return handler
         
@@ -916,6 +922,69 @@ class LeadDetailView:
         self.page.open(dialog)
     
     # ---- Hilfsfunktionen ----
+    
+    def _show_besuchsbericht_dialog(self):
+        """Zeigt Besuchsbericht-Dialog mit Kundendaten und Lead-Daten"""
+        def submit_besuchsbericht(e):
+            # Lead auf "erledigt" (3) setzen mit Kommentar "Besuchsbericht angelegt"
+            success = self.lead_manager.complete_lead(
+                self.lead.lead_id,
+                self.current_user['benutzer_id']
+            )
+            if success:
+                # Kommentar hinzufügen
+                self.lead_manager.add_kommentar(
+                    self.lead.lead_id,
+                    "Besuchsbericht angelegt"
+                )
+                self.page.close(dialog)
+                self.render()
+        
+        # Kundeninfos Section
+        kundeninfos = ft.Card(
+            content=ft.Container(
+                content=ft.Column([
+                    ft.Text("Kundeninfos", size=14, weight=ft.FontWeight.BOLD),
+                    ft.Text(f"Firma: {self.lead.kunde_name}"),
+                    ft.Text(f"Ansprechpartner: {self.lead.ansprechpartner_name}"),
+                    ft.Text(f"E-Mail: {self.lead.kunde_email}"),
+                    ft.Text(f"Telefon: {self.lead.kunde_telefon}"),
+                ]),
+                padding=12
+            )
+        )
+        
+        # Lead-Daten Section
+        leaddaten = ft.Card(
+            content=ft.Container(
+                content=ft.Column([
+                    ft.Text("Lead-Daten", size=14, weight=ft.FontWeight.BOLD),
+                    ft.Text(f"Lead ID: {self.lead.lead_id}"),
+                    ft.Text(f"Produkt: {self.lead.produkt_name}"),
+                    ft.Text(f"Status: {self.lead.status_name}"),
+                    ft.Text(f"Erfasst von: {self.lead.erfasser_name}"),
+                    ft.Text(f"Datum: {self.lead.datum_erfasst}"),
+                ]),
+                padding=12
+            )
+        )
+        
+        dialog = ft.AlertDialog(
+            title=ft.Text("Besuchsbericht erstellen"),
+            content=ft.Column([
+                ft.Text("Kundendetails und Lead-Informationen:", size=12),
+                kundeninfos,
+                leaddaten,
+                ft.Text("Der Lead wird als 'erledigt' markiert und ein Besuchsbericht wird angelegt.", 
+                       size=11, color="grey", italic=True)
+            ], spacing=10, scroll=ft.ScrollMode.AUTO),
+            actions=[
+                ft.TextButton("Abbrechen", on_click=lambda e: self.page.close(dialog)),
+                ft.TextButton("Besuchsbericht erstellen", on_click=submit_besuchsbericht)
+            ]
+        )
+        
+        self.page.open(dialog)
     
     def _get_aktion_icon(self, aktion_typ: str):
         """Gibt passendes Icon für Aktion zurück"""
