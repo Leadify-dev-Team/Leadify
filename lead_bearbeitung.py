@@ -1029,7 +1029,7 @@ class LeadDetailView:
                 self.lead_manager.log_aktion(
                     self.lead.lead_id,
                     self.current_user['benutzer_id'],
-                    'angebot_erstellt',
+                    'Angebot erstellt',
                     None,
                     'Angebot erstellt'
                 )
