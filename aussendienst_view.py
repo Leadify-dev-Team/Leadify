@@ -121,6 +121,10 @@ class AussendienstView:
         self.current_user = current_user
         self.app_controller = None  # Wird von AppController gesetzt
         
+        # Multi-Step Formular
+        self.current_step = 1  # Aktueller Schritt (1-4)
+        self.total_steps = 4
+        
         # Ausgewählte Werte
         self.selected_firma = None
         self.selected_ansprechpartner = None
@@ -141,7 +145,7 @@ class AussendienstView:
         self.beschreibung_field = None
     
     def render(self):
-        """Zeigt die Lead-Erfassungsmaske"""
+        """Zeigt die Lead-Erfassungsmaske mit Multi-Step Formular"""
         try:
             self.page.clean()
             
@@ -155,36 +159,26 @@ class AussendienstView:
                 ft.Text("Neuen Lead erfassen", size=24, weight=ft.FontWeight.BOLD),
             ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
             
-            # Formular
-            print("[DEBUG] Starte _build_form()")
-            form = self._build_form()
-            print("[DEBUG] _build_form() erfolgreich")
+            # Fortschrittsanzeige
+            progress_indicator = self._build_progress_indicator()
             
-            # Buttons
-            buttons = ft.Row([
-                ft.ElevatedButton(
-                    "Lead speichern",
-                    icon=ft.Icons.SAVE,
-                    on_click=lambda e: self._save_lead(),
-                    bgcolor=ft.Colors.GREEN,
-                    color=ft.Colors.WHITE
-                ),
-                ft.OutlinedButton(
-                    "Abbrechen",
-                    icon=ft.Icons.CANCEL,
-                    on_click=lambda e: self._go_back_to_menu()
-                )
-            ], spacing=10)
+            # Aktueller Schritt
+            step_content = self._build_current_step()
+            
+            # Navigation Buttons
+            nav_buttons = self._build_navigation_buttons()
             
             self.page.add(
                 ft.Container(
                     content=ft.Column([
                         header,
                         ft.Divider(),
-                        form,
-                        ft.Divider(),
-                        buttons
-                    ], scroll=ft.ScrollMode.AUTO),
+                        progress_indicator,
+                        ft.Divider(height=20, color="transparent"),
+                        step_content,
+                        ft.Divider(height=20, color="transparent"),
+                        nav_buttons
+                    ], scroll=ft.ScrollMode.AUTO, expand=True),
                     padding=20,
                     expand=True
                 )
@@ -195,203 +189,389 @@ class AussendienstView:
             traceback.print_exc()
             self.page.add(ft.Text(f"Fehler beim Laden: {str(ex)}", color="red"))
     
-    def _build_form(self):
-        """Erstellt das Lead-Erfassungs-Formular"""
+    def _build_progress_indicator(self):
+        """Erstellt die Fortschrittsanzeige"""
+        steps = [
+            {"number": 1, "label": "Kunde"},
+            {"number": 2, "label": "Produkt"},
+            {"number": 3, "label": "Details"},
+            {"number": 4, "label": "Beschreibung"}
+        ]
         
-        print("\n[DEBUG] ===== _build_form() gestartet =====")
-        
-        # 1. FIRMA auswählen (Eingabefeld mit Live-Suche)
-        print("[DEBUG] Lade Firmen...")
-        try:
-            firmen = self.manager.get_alle_firmen()
-            print(f"[DEBUG] Firmen geladen: {len(firmen)}")
-            if firmen:
-                print(f"[DEBUG] Erste 3 Firmen: {firmen[:3]}")
-            else:
-                print("[DEBUG] WARNUNG: Keine Firmen gefunden!")
+        step_indicators = []
+        for step in steps:
+            is_current = step["number"] == self.current_step
+            is_completed = step["number"] < self.current_step
             
+            # Farbe basierend auf Status
+            if is_completed:
+                color = ft.Colors.GREEN
+                icon = ft.Icons.CHECK_CIRCLE
+            elif is_current:
+                color = ft.Colors.BLUE
+                icon = ft.Icons.RADIO_BUTTON_CHECKED
+            else:
+                color = ft.Colors.GREY_400
+                icon = ft.Icons.RADIO_BUTTON_UNCHECKED
+            
+            step_indicators.append(
+                ft.Column([
+                    ft.Icon(icon, color=color, size=30),
+                    ft.Text(
+                        step["label"],
+                        size=12,
+                        weight=ft.FontWeight.BOLD if is_current else ft.FontWeight.NORMAL,
+                        color=color
+                    )
+                ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=5)
+            )
+        
+        return ft.Row(
+            step_indicators,
+            alignment=ft.MainAxisAlignment.SPACE_AROUND,
+            spacing=10
+        )
+    
+    def _build_current_step(self):
+        """Erstellt den Inhalt für den aktuellen Schritt"""
+        if self.current_step == 1:
+            return self._build_step_1_kundendaten()
+        elif self.current_step == 2:
+            return self._build_step_2_produktinformationen()
+        elif self.current_step == 3:
+            return self._build_step_3_lead_details()
+        elif self.current_step == 4:
+            return self._build_step_4_beschreibung()
+        else:
+            return ft.Text("Ungültiger Schritt", color="red")
+    
+    def _build_navigation_buttons(self):
+        """Erstellt die Navigations-Buttons"""
+        buttons = []
+        
+        # Zurück-Button (außer bei Schritt 1)
+        if self.current_step > 1:
+            buttons.append(
+                ft.OutlinedButton(
+                    "Zurück",
+                    icon=ft.Icons.ARROW_BACK,
+                    on_click=lambda e: self._previous_step()
+                )
+            )
+        
+        # Abbrechen-Button
+        buttons.append(
+            ft.OutlinedButton(
+                "Abbrechen",
+                icon=ft.Icons.CANCEL,
+                on_click=lambda e: self._go_back_to_menu()
+            )
+        )
+        
+        # Weiter/Speichern-Button
+        if self.current_step < self.total_steps:
+            buttons.append(
+                ft.ElevatedButton(
+                    "Weiter",
+                    icon=ft.Icons.ARROW_FORWARD,
+                    on_click=lambda e: self._next_step(),
+                    bgcolor=ft.Colors.BLUE,
+                    color=ft.Colors.WHITE
+                )
+            )
+        else:
+            buttons.append(
+                ft.ElevatedButton(
+                    "Lead speichern",
+                    icon=ft.Icons.SAVE,
+                    on_click=lambda e: self._save_lead(),
+                    bgcolor=ft.Colors.GREEN,
+                    color=ft.Colors.WHITE
+                )
+            )
+        
+        return ft.Row(
+            buttons,
+            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+            spacing=10
+        )
+    
+    def _build_step_1_kundendaten(self):
+        """Schritt 1: Kundendaten eingeben"""
+        print("\n[DEBUG] ===== Schritt 1: Kundendaten =====")
+        
+        # Firma SearchField erstellen (nur beim ersten Mal)
+        if self.firma_dropdown is None:
+            firmen = self.manager.get_alle_firmen()
             self.firma_options = [
                 {'key': str(f['id']), 'text': f"{f['firma']} ({f['ort']})"}
                 for f in firmen
             ]
-        except Exception as e:
-            print(f"[DEBUG] FEHLER beim Laden von Firmen: {e}")
-            import traceback
-            traceback.print_exc()
-            self.firma_options = []
-        
-        self.firma_dropdown = SearchField(
-            label="Firma auswählen *",
-            options=self.firma_options,
-            on_select=lambda key: self._on_firma_selected(key),
-            width=400
-        )
-        print(f"[DEBUG] SearchField für Firma erstellt mit {len(self.firma_options)} Optionen")
-        
-        # 2. ANSPRECHPARTNER auswählen (Dropdown nach Firma-Auswahl)
-        self.ansprechpartner_dropdown = ft.Dropdown(
-            label="Ansprechpartner auswählen *",
-            options=[],
-            width=400
-        )
-        
-        # 3. PRODUKTGRUPPE auswählen (Dropdown)
-        produktgruppen = self.manager.get_produktgruppen()
-        produktgruppe_options = [
-            ft.dropdown.Option(key=str(pg['produkt_id']), text=pg['produkt'])
-            for pg in produktgruppen
-        ]
-        
-        self.produktgruppe_dropdown = ft.Dropdown(
-            label="Produktgruppe auswählen *",
-            options=produktgruppe_options,
-            on_change=lambda e: self._on_produktgruppe_selected(e.control.value),
-            width=400
-        )
-        
-        # 4. PRODUKT auswählen (SearchField nach Produktgruppe-Auswahl)
-        self.produkt_dropdown = SearchField(
-            label="Produkt auswählen *",
-            options=[],
-            width=400
-        )
-        
-        # 5. ZUSTAND auswählen (Dropdown)
-        zustaende = self.manager.get_produktzustaende()
-        zustand_options = [
-            ft.dropdown.Option(key=str(z['id']), text=z['zustand'])
-            for z in zustaende
-        ]
-        
-        self.zustand_dropdown = ft.Dropdown(
-            label="Zustand *",
-            options=zustand_options,
-            width=400
-        )
-        
-        # 6. QUELLE auswählen (Dropdown)
-        quellen = self.manager.get_quellen()
-        quelle_options = [
-            ft.dropdown.Option(key=str(q['id']), text=q['quelle'])
-            for q in quellen
-        ]
-        
-        self.quelle_dropdown = ft.Dropdown(
-            label="Lead-Quelle *",
-            options=quelle_options,
-            width=400
-        )
-        
-        # 7. BEARBEITER auswählen (Dropdown)
-        bearbeiter = self.manager.get_verfuegbare_bearbeiter()
-        bearbeiter_options = [
-            ft.dropdown.Option(key=str(b['benutzer_id']), text=b['name'])
-            for b in bearbeiter
-        ]
-        
-        self.bearbeiter_dropdown = ft.Dropdown(
-            label="An Innendienst zuweisen *",
-            options=bearbeiter_options,
-            width=400
-        )
-        
-        # 8. BESCHREIBUNG (optional)
-        self.beschreibung_field = ft.TextField(
-            label="Beschreibung / Notizen (optional)",
-            multiline=True,
-            min_lines=4,
-            max_lines=6,
-            width=400
-        )
-        
-        # Formular zusammenbauen
-        return ft.Column([
-            ft.Text("Kundendaten", size=18, weight=ft.FontWeight.BOLD),
-            self.firma_dropdown.container,
             
-            # Button zum Ansprechpartner laden
-            ft.ElevatedButton(
-                text="Ansprechpartner laden",
-                on_click=lambda e: self._load_ansprechpartner(),
-                icon=ft.Icons.SEARCH
-            ),
+            self.firma_dropdown = SearchField(
+                label="Firma auswählen *",
+                options=self.firma_options,
+                on_select=lambda key: self._on_firma_selected(key),
+                width=400
+            )
+        
+        # Ansprechpartner Dropdown erstellen (nur beim ersten Mal)
+        if self.ansprechpartner_dropdown is None:
+            self.ansprechpartner_dropdown = ft.Dropdown(
+                label="Ansprechpartner auswählen *",
+                options=[],
+                width=400
+            )
+        
+        return ft.Container(
+            content=ft.Column([
+                ft.Text("Schritt 1: Kundendaten", size=20, weight=ft.FontWeight.BOLD),
+                ft.Divider(height=10, color="transparent"),
+                ft.Text("Wählen Sie die Firma und den Ansprechpartner aus", size=14, color="grey"),
+                ft.Divider(height=20, color="transparent"),
+                self.firma_dropdown.container,
+                ft.Divider(height=10, color="transparent"),
+                self.ansprechpartner_dropdown,
+                ft.Divider(height=10, color="transparent"),
+                ft.Text("* Pflichtfelder", size=12, color="grey", italic=True)
+            ], spacing=10),
+            padding=20,
+            border=ft.border.all(1, ft.Colors.GREY_300),
+            border_radius=10
+        )
+    
+    def _build_step_2_produktinformationen(self):
+        """Schritt 2: Produktinformationen eingeben"""
+        print("\n[DEBUG] ===== Schritt 2: Produktinformationen =====")
+        
+        # Produktgruppe Dropdown erstellen (nur beim ersten Mal)
+        if self.produktgruppe_dropdown is None:
+            produktgruppen = self.manager.get_produktgruppen()
+            produktgruppe_options = [
+                ft.dropdown.Option(key=str(pg['produkt_id']), text=pg['produkt'])
+                for pg in produktgruppen
+            ]
             
-            self.ansprechpartner_dropdown,
+            self.produktgruppe_dropdown = ft.Dropdown(
+                label="Produktgruppe auswählen *",
+                options=produktgruppe_options,
+                on_change=lambda e: self._on_produktgruppe_selected(e.control.value),
+                width=400
+            )
+        
+        # Produkt SearchField erstellen (nur beim ersten Mal)
+        if self.produkt_dropdown is None:
+            self.produkt_dropdown = SearchField(
+                label="Produkt auswählen *",
+                options=[],
+                width=400
+            )
+        
+        # Zustand Dropdown erstellen (nur beim ersten Mal)
+        if self.zustand_dropdown is None:
+            zustaende = self.manager.get_produktzustaende()
+            zustand_options = [
+                ft.dropdown.Option(key=str(z['id']), text=z['zustand'])
+                for z in zustaende
+                if z['id'] != 3  # ID 3 ist für Serviceleistungen reserviert (NULL-Wert)
+            ]
             
-            ft.Divider(height=20),
-            ft.Text("Produktinformationen", size=18, weight=ft.FontWeight.BOLD),
-            self.produktgruppe_dropdown,
-            self.produkt_dropdown.container,
-            self.zustand_dropdown,
+            self.zustand_dropdown = ft.Dropdown(
+                label="Zustand *",
+                options=zustand_options,
+                width=400
+            )
+        
+        return ft.Container(
+            content=ft.Column([
+                ft.Text("Schritt 2: Produktinformationen", size=20, weight=ft.FontWeight.BOLD),
+                ft.Divider(height=10, color="transparent"),
+                ft.Text("Wählen Sie Produktgruppe, Produkt und Zustand aus", size=14, color="grey"),
+                ft.Divider(height=20, color="transparent"),
+                self.produktgruppe_dropdown,
+                ft.Divider(height=10, color="transparent"),
+                self.produkt_dropdown.container,
+                ft.Divider(height=10, color="transparent"),
+                self.zustand_dropdown,
+                ft.Divider(height=10, color="transparent"),
+                ft.Text("* Pflichtfelder", size=12, color="grey", italic=True)
+            ], spacing=10),
+            padding=20,
+            border=ft.border.all(1, ft.Colors.GREY_300),
+            border_radius=10
+        )
+    
+    def _build_step_3_lead_details(self):
+        """Schritt 3: Lead-Details eingeben"""
+        print("\n[DEBUG] ===== Schritt 3: Lead-Details =====")
+        
+        # Quelle Dropdown erstellen (nur beim ersten Mal)
+        if self.quelle_dropdown is None:
+            quellen = self.manager.get_quellen()
+            quelle_options = [
+                ft.dropdown.Option(key=str(q['id']), text=q['quelle'])
+                for q in quellen
+            ]
             
-            ft.Divider(height=20),
-            ft.Text("Lead-Details", size=18, weight=ft.FontWeight.BOLD),
-            self.quelle_dropdown,
-            self.bearbeiter_dropdown,
-            self.beschreibung_field,
+            self.quelle_dropdown = ft.Dropdown(
+                label="Lead-Herkunft *",
+                options=quelle_options,
+                width=400
+            )
+        
+        # Bearbeiter Dropdown erstellen (nur beim ersten Mal)
+        if self.bearbeiter_dropdown is None:
+            bearbeiter = self.manager.get_verfuegbare_bearbeiter()
+            bearbeiter_options = [
+                ft.dropdown.Option(key=str(b['benutzer_id']), text=b['name'])
+                for b in bearbeiter
+            ]
             
-            ft.Text("* Pflichtfelder", size=12, color="grey", italic=True)
-        ], spacing=15)
+            self.bearbeiter_dropdown = ft.Dropdown(
+                label="An Innendienst zuweisen *",
+                options=bearbeiter_options,
+                width=400
+            )
+        
+        return ft.Container(
+            content=ft.Column([
+                ft.Text("Schritt 3: Lead-Details", size=20, weight=ft.FontWeight.BOLD),
+                ft.Divider(height=10, color="transparent"),
+                ft.Text("Geben Sie Quelle und Bearbeiter an", size=14, color="grey"),
+                ft.Divider(height=20, color="transparent"),
+                self.quelle_dropdown,
+                ft.Divider(height=10, color="transparent"),
+                self.bearbeiter_dropdown,
+                ft.Divider(height=10, color="transparent"),
+                ft.Text("* Pflichtfelder", size=12, color="grey", italic=True)
+            ], spacing=10),
+            padding=20,
+            border=ft.border.all(1, ft.Colors.GREY_300),
+            border_radius=10
+        )
+    
+    def _build_step_4_beschreibung(self):
+        """Schritt 4: Beschreibung eingeben"""
+        print("\n[DEBUG] ===== Schritt 4: Beschreibung =====")
+        
+        # Beschreibung TextField erstellen (nur beim ersten Mal)
+        if self.beschreibung_field is None:
+            self.beschreibung_field = ft.TextField(
+                label="Beschreibung / Notizen (optional)",
+                multiline=True,
+                min_lines=8,
+                max_lines=12,
+                width=400
+            )
+        
+        return ft.Container(
+            content=ft.Column([
+                ft.Text("Schritt 4: Beschreibung", size=20, weight=ft.FontWeight.BOLD),
+                ft.Divider(height=10, color="transparent"),
+                ft.Text("Fügen Sie optional eine Beschreibung oder Notizen hinzu", size=14, color="grey"),
+                ft.Divider(height=20, color="transparent"),
+                self.beschreibung_field,
+                ft.Divider(height=10, color="transparent"),
+                ft.Text("Dieses Feld ist optional", size=12, color="grey", italic=True)
+            ], spacing=10),
+            padding=20,
+            border=ft.border.all(1, ft.Colors.GREY_300),
+            border_radius=10
+        )
+    
+    def _next_step(self):
+        """Wechselt zum nächsten Schritt"""
+        # Validierung des aktuellen Schritts
+        if not self._validate_current_step():
+            return
+        
+        if self.current_step < self.total_steps:
+            self.current_step += 1
+            self.render()
+    
+    def _previous_step(self):
+        """Wechselt zum vorherigen Schritt"""
+        if self.current_step > 1:
+            self.current_step -= 1
+            self.render()
+    
+    def _validate_current_step(self):
+        """Validiert die Eingaben des aktuellen Schritts"""
+        if self.current_step == 1:
+            # Validiere Kundendaten
+            if not self.firma_dropdown.value:
+                self.firma_dropdown.error_text = "Bitte wählen Sie eine Firma aus"
+                self.page.update()
+                return False
+            
+            if not self.ansprechpartner_dropdown.value:
+                self.ansprechpartner_dropdown.error_text = "Bitte wählen Sie einen Ansprechpartner aus"
+                self.page.update()
+                return False
+            
+            self.selected_ansprechpartner = int(self.ansprechpartner_dropdown.value)
+            
+        elif self.current_step == 2:
+            # Validiere Produktinformationen
+            if not self.produktgruppe_dropdown.value:
+                self.produktgruppe_dropdown.error_text = "Bitte wählen Sie eine Produktgruppe aus"
+                self.page.update()
+                return False
+            
+            if not self.produkt_dropdown.value:
+                self.produkt_dropdown.error_text = "Bitte wählen Sie ein Produkt aus"
+                self.page.update()
+                return False
+            
+            # Zustand nur validieren wenn das Feld sichtbar ist (nicht bei Serviceleistungen)
+            if self.zustand_dropdown.visible and not self.zustand_dropdown.value:
+                self.zustand_dropdown.error_text = "Bitte wählen Sie einen Zustand aus"
+                self.page.update()
+                return False
+            
+            self.selected_produkt = int(self.produkt_dropdown.value)
+            # Zustand nur setzen wenn das Feld sichtbar ist (nicht bei Serviceleistungen)
+            if self.zustand_dropdown.visible and self.zustand_dropdown.value:
+                self.selected_zustand = int(self.zustand_dropdown.value)
+            else:
+                self.selected_zustand = 3  # ID 3 = NULL-Eintrag für Serviceleistungen
+            
+        elif self.current_step == 3:
+            # Validiere Lead-Details
+            if not self.quelle_dropdown.value:
+                self.quelle_dropdown.error_text = "Bitte wählen Sie eine Quelle aus"
+                self.page.update()
+                return False
+            
+            if not self.bearbeiter_dropdown.value:
+                self.bearbeiter_dropdown.error_text = "Bitte wählen Sie einen Bearbeiter aus"
+                self.page.update()
+                return False
+            
+            self.selected_quelle = int(self.quelle_dropdown.value)
+            self.selected_bearbeiter = int(self.bearbeiter_dropdown.value)
+        
+        # Schritt 4 (Beschreibung) hat keine Pflichtfelder
+        
+        return True
     
     # ---- Event Handlers ----
     
     def _on_firma_selected(self, firma_id):
-        """Wird aufgerufen wenn Firma in SearchField ausgewählt wird"""
+        """Wird aufgerufen wenn Firma in SearchField ausgewählt wird - lädt automatisch Ansprechpartner"""
         if not firma_id:
             return
         
         self.selected_firma = int(firma_id)
         print(f"[DEBUG] Firma ausgewählt: {self.selected_firma}")
-    
-    def _load_ansprechpartner(self):
-        """Lädt Ansprechpartner für die ausgewählte Firma"""
-        # DEBUG: Zeige den aktuellen Zustand der SearchField
-        print(f"\n[DEBUG] ===== _load_ansprechpartner() aufgerufen =====")
-        print(f"  firma_dropdown Typ: {type(self.firma_dropdown)}")
-        print(f"  firma_dropdown.text_field.value: {self.firma_dropdown.text_field.value}")
-        print(f"  firma_dropdown.value (selected_value): {self.firma_dropdown.value}")
-        print(f"  firma_options Länge: {len(self.firma_options) if hasattr(self, 'firma_options') else 'NICHT VORHANDEN'}")
         
-        # Prüfe ob Firma eingegeben wurde
-        firma_text = self.firma_dropdown.text_field.value.strip() if self.firma_dropdown.text_field.value else ""
-        firma_id = self.firma_dropdown.value
-        
-        print(f"  Bereinigter firma_text: '{firma_text}'")
-        print(f"  firma_id: '{firma_id}'")
-        
-        # Wenn keine ID ausgewählt, aber Text eingegeben, suche die ID
-        if not firma_id and firma_text:
-            print(f"\n[DEBUG] Suche Firma nach Text: '{firma_text}'")
-            print(f"[DEBUG] Verfügbare Firmen:")
-            for i, opt in enumerate(self.firma_options[:5]):  # Zeige erste 5
-                print(f"    {i}: key={opt['key']}, text={opt['text']}")
-            
-            for opt in self.firma_options:
-                if opt['text'].lower() == firma_text.lower():
-                    firma_id = opt['key']
-                    print(f"[DEBUG] EXAKTE ÜBEREINSTIMMUNG GEFUNDEN! Firma-ID: {firma_id}")
-                    break
-                # Auch Teilübereinstimmung versuchen
-                elif firma_text.lower() in opt['text'].lower():
-                    firma_id = opt['key']
-                    print(f"[DEBUG] TEILÜBEREINSTIMMUNG GEFUNDEN! Firma-ID: {firma_id}, Text: {opt['text']}")
-                    break
-        
-        if not firma_id:
-            print(f"[DEBUG] FEHLER: Keine Firma-ID gefunden!")
-            self.ansprechpartner_dropdown.error_text = "Bitte zuerst eine Firma auswählen oder eingeben"
-            self.page.update()
-            return
-        
+        # Ansprechpartner automatisch laden
         try:
-            self.selected_firma = int(firma_id)
-            print(f"\n[DEBUG] Lade Ansprechpartner für Firma-ID: {self.selected_firma}")
+            print(f"[DEBUG] Lade Ansprechpartner für Firma-ID: {self.selected_firma}")
             
             # Ansprechpartner laden - filtert nach firma_id
             ansprechpartner = self.manager.get_ansprechpartner_by_firma(self.selected_firma)
             print(f"[DEBUG] Ansprechpartner gefunden: {len(ansprechpartner)}")
-            if ansprechpartner:
-                print(f"[DEBUG] Erste 2: {ansprechpartner[:2]}")
             
             if ansprechpartner:
                 # Dropdown-Optionen füllen
@@ -403,20 +583,21 @@ class AussendienstView:
                     for ap in ansprechpartner
                 ]
                 
-                # Ersten Ansprechpartner automatisch auswählen
-                self.ansprechpartner_dropdown.value = str(ansprechpartner[0]['id'])
-                self.selected_ansprechpartner = int(ansprechpartner[0]['id'])
+                # Kein Ansprechpartner automatisch auswählen - Nutzer muss explizit wählen
+                self.ansprechpartner_dropdown.value = None
+                self.ansprechpartner_dropdown.hint_text = "Bitte wählen"
                 self.ansprechpartner_dropdown.error_text = None
-                print(f"[DEBUG] Erster Ansprechpartner automatisch ausgewählt: {ansprechpartner[0]['id']}")
+                print(f"[DEBUG] {len(ansprechpartner)} Ansprechpartner geladen, bitte auswählen")
             else:
                 self.ansprechpartner_dropdown.options = []
+                self.ansprechpartner_dropdown.value = None
                 self.ansprechpartner_dropdown.error_text = "Keine Ansprechpartner für diese Firma gefunden"
                 print(f"[DEBUG] Keine Ansprechpartner für Firma {self.selected_firma}")
             
             self.page.update()
             
         except Exception as e:
-            print(f"[DEBUG] FEHLER in _load_ansprechpartner(): {e}")
+            print(f"[DEBUG] FEHLER beim Laden der Ansprechpartner: {e}")
             import traceback
             traceback.print_exc()
             self.ansprechpartner_dropdown.error_text = f"Fehler: {str(e)}"
@@ -432,6 +613,20 @@ class AussendienstView:
         
         # DEBUG
         print(f"[DEBUG] Produktgruppe ausgewählt: {self.selected_produktgruppe}")
+        
+        # Prüfe ob Serviceleistungen ausgewählt wurden (verstecke Zustand-Feld)
+        produktgruppe_text = self.produktgruppe_dropdown.value
+        selected_option = next((opt for opt in self.produktgruppe_dropdown.options if opt.key == produktgruppe_text), None)
+        if selected_option and "Serviceleistungen" in selected_option.text:
+            # Zustand-Feld verstecken für Serviceleistungen
+            self.zustand_dropdown.visible = False
+            self.zustand_dropdown.value = None  # Wert zurücksetzen
+            self.selected_zustand = None
+            print("[DEBUG] Serviceleistungen ausgewählt - Zustand-Feld ausgeblendet")
+        else:
+            # Zustand-Feld anzeigen für alle anderen Produktgruppen
+            self.zustand_dropdown.visible = True
+            print("[DEBUG] Zustand-Feld angezeigt")
         
         # Produkte laden
         try:
@@ -453,6 +648,7 @@ class AussendienstView:
             self.produkt_dropdown.error_text = f"Fehler: {str(e)}"
         
         self.produkt_dropdown.container.update()
+        self.page.update()
     
     def _save_lead(self):
         """Lead speichern - mit Validierung"""
@@ -494,11 +690,11 @@ class AussendienstView:
             else:
                 self.produkt_dropdown.error_text = None
             
-            # Prüfe Zustand (Dropdown)
-            if not self.zustand_dropdown.value:
+            # Prüfe Zustand (Dropdown) - nur wenn sichtbar (nicht bei Serviceleistungen)
+            if self.zustand_dropdown.visible and not self.zustand_dropdown.value:
                 errors.append("Bitte Zustand auswählen")
                 self.zustand_dropdown.error_text = "Pflichtfeld"
-            else:
+            elif self.zustand_dropdown.visible:
                 self.zustand_dropdown.error_text = None
             
             # Prüfe Quelle (Dropdown)
@@ -525,12 +721,14 @@ class AussendienstView:
             
             print("[DEBUG] Validierung erfolgreich - starte Lead-Erstellung")
             
-            # Lead erstellen
+            # Lead erstellen - Zustand auf ID 3 setzen wenn nicht sichtbar (Serviceleistungen)
+            zustand_id = int(self.zustand_dropdown.value) if self.zustand_dropdown.visible and self.zustand_dropdown.value else 3
+            
             lead_id = self.manager.create_lead(
                 ansprechpartner_id=int(self.ansprechpartner_dropdown.value),
                 produkt_id=int(self.produkt_dropdown.value),
                 produktgruppe_id=int(self.produktgruppe_dropdown.value),
-                produktzustand_id=int(self.zustand_dropdown.value),
+                produktzustand_id=zustand_id,
                 quelle_id=int(self.quelle_dropdown.value),
                 erfasser_id=self.current_user['benutzer_id'],
                 bearbeiter_id=int(self.bearbeiter_dropdown.value),

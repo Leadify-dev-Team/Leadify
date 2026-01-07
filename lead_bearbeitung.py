@@ -247,6 +247,47 @@ class LeadBearbeitungManager:
         """
         results = self.db.fetch_all(sql, (lead_id,))
         return [LeadKommentar(row) for row in results] if results else []
+    
+    # ---- Neue Lead Benachrichtigungen ----
+    
+    def get_neue_leads(self, bearbeiter_id: int):
+        """
+        Gibt alle neuen Leads zurück, die diesem Bearbeiter kürzlich zugewiesen wurden
+        (Leads mit status_id = 1 'Offen' seit der letzten Prüfung)
+        """
+        sql = """
+            SELECT 
+                l.*,
+                CONCAT(b.vorname, ' ', b.nachname) as erfasser_name,
+                f.name as kunde_name,
+                p.produkt as produkt_name,
+                s.status as status_name,
+                CONCAT(ap.vorname, ' ', ap.nachname) as ansprechpartner_name
+            FROM lead l
+            LEFT JOIN benutzer b ON l.erfasser_id = b.benutzer_id
+            LEFT JOIN ansprechpartner ap ON l.ansprechpartner_id = ap.id
+            LEFT JOIN firma f ON ap.firma_id = f.id
+            LEFT JOIN produkte p ON l.produkt_id = p.produkt_id
+            LEFT JOIN status s ON l.status_id = s.id
+            WHERE l.bearbeiter_id = ? 
+            AND l.status_id = 1
+            AND l.datum_erfasst >= NOW() - INTERVAL 24 HOUR
+            ORDER BY l.datum_erfasst DESC
+        """
+        results = self.db.fetch_all(sql, (bearbeiter_id,))
+        return [Lead(row) for row in results] if results else []
+    
+    def count_neue_leads(self, bearbeiter_id: int):
+        """Zählt die Anzahl neuer, offener Leads für einen Bearbeiter"""
+        sql = """
+            SELECT COUNT(*) as anzahl
+            FROM lead
+            WHERE bearbeiter_id = ? 
+            AND status_id = 1
+            AND datum_erfasst >= NOW() - INTERVAL 24 HOUR
+        """
+        result = self.db.fetch_one(sql, (bearbeiter_id,))
+        return result['anzahl'] if result else 0
 
 
 # ============================================================================
@@ -397,31 +438,83 @@ class LeadBearbeitungView:
             border_radius=4
         )
         
-        return ft.Card(
-            content=ft.Container(
-                content=ft.Column([
-                    ft.ListTile(
-                        leading=ft.Icon(ft.Icons.ASSIGNMENT),
-                        title=ft.Text(f"Lead #{lead.lead_id} - {lead.kunde_name}"),
-                        subtitle=ft.Row([
-                            ft.Text(f"{lead.produkt_name}"),
-                            ft.Text("| Status:"),
-                            status_badge
-                        ], spacing=5),
-                        trailing=ft.IconButton(
-                            icon=ft.Icons.ARROW_FORWARD,
-                            tooltip="Details",
-                            on_click=lambda e, l=lead: self._show_details(l)
-                        )
-                    ),
-                    ft.Row([
-                        ft.Text(f"Erfasst von: {lead.erfasser_name}", size=12, color="grey"),
-                        ft.Text(f"Datum: {lead.datum_erfasst}", size=12, color="grey")
-                    ], spacing=20)
-                ]),
-                padding=10
+        # NEU: Prüfe ob Lead neu ist (innerhalb der letzten 24 Stunden)
+        is_new = self._is_lead_new(lead)
+        
+        # Titel-Zeile mit optionalem "NEU" Badge
+        title_content = ft.Row([
+            ft.Text(f"Lead #{lead.lead_id} - {lead.kunde_name}"),
+            ft.Container(
+                content=ft.Row([
+                    ft.Icon(ft.Icons.FIBER_NEW, color="white", size=16),
+                    ft.Text("NEU", size=11, color="white", weight=ft.FontWeight.BOLD)
+                ], spacing=3),
+                bgcolor="orange",
+                padding=ft.padding.symmetric(horizontal=6, vertical=3),
+                border_radius=4,
+                visible=is_new
             )
+        ], spacing=10)
+        
+        return ft.Container(
+            content=ft.Card(
+                content=ft.Container(
+                    content=ft.Column([
+                        ft.ListTile(
+                            leading=ft.Icon(ft.Icons.ASSIGNMENT),
+                            title=title_content,
+                            subtitle=ft.Row([
+                                ft.Text(f"{lead.produkt_name}"),
+                                ft.Text("| Status:"),
+                                status_badge
+                            ], spacing=5),
+                        ),
+                        ft.Row([
+                            ft.Text(f"Erfasst von: {lead.erfasser_name}", size=12, color="grey"),
+                            ft.Text(f"Datum: {lead.datum_erfasst}", size=12, color="grey")
+                        ], spacing=20)
+                    ]),
+                    padding=10
+                ),
+                elevation=2
+            ),
+            on_click=lambda e, l=lead: self._show_details(l),
+            ink=True,
+            border_radius=10,
         )
+    
+    def _is_lead_new(self, lead: Lead):
+        """Prüft ob ein Lead innerhalb der letzten 24 Stunden erstellt wurde"""
+        from datetime import datetime, timedelta, date
+        
+        try:
+            # Datum parsen (Format kann variieren)
+            if isinstance(lead.datum_erfasst, str):
+                # Versuche verschiedene Datumsformate
+                for fmt in ['%Y-%m-%d %H:%M:%S', '%Y-%m-%d', '%d.%m.%Y %H:%M:%S', '%d.%m.%Y']:
+                    try:
+                        lead_date = datetime.strptime(lead.datum_erfasst, fmt)
+                        break
+                    except ValueError:
+                        continue
+                else:
+                    # Fallback wenn kein Format passt
+                    return False
+            elif isinstance(lead.datum_erfasst, date) and not isinstance(lead.datum_erfasst, datetime):
+                # datetime.date zu datetime.datetime konvertieren
+                lead_date = datetime.combine(lead.datum_erfasst, datetime.min.time())
+            else:
+                lead_date = lead.datum_erfasst
+            
+            # Prüfe ob weniger als 24 Stunden alt
+            now = datetime.now()
+            time_diff = now - lead_date
+            is_new = time_diff.total_seconds() < 86400  # 24 Stunden in Sekunden
+            return is_new
+            
+        except Exception as e:
+            # Bei Fehler als nicht neu markieren
+            return False
     
     def _show_details(self, lead: Lead):
         """Öffnet die Detail-Ansicht für einen Lead"""
@@ -537,7 +630,6 @@ class LeadDetailView:
                     "Weiterleiten",
                     icon=ft.Icons.FORWARD,
                     on_click=lambda e: self._handle_forward(),
-                    color=ft.Colors.WHITE
                 )
             ], wrap=True, spacing=10)
         

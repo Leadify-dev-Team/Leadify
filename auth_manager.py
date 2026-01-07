@@ -161,6 +161,36 @@ class AuthManager:
         # Lokales Token löschen
         self._clear_token()
     
+    def change_password(self, benutzer_id, old_password, new_password):
+        """Ändert das Passwort eines Benutzers"""
+        try:
+            # Benutzer abrufen
+            user = self.db.fetch_one(
+                "SELECT passwort_hash FROM benutzer WHERE benutzer_id = ?",
+                (benutzer_id,)
+            )
+            
+            if not user:
+                return False, "Benutzer nicht gefunden"
+            
+            # Altes Passwort überprüfen
+            if not bcrypt.checkpw(old_password.encode('utf-8'), user['passwort_hash'].encode('utf-8')):
+                return False, "Altes Passwort ist falsch"
+            
+            # Neues Passwort hashen
+            hashed_password = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt())
+            
+            # Passwort in DB aktualisieren
+            self.db.query(
+                "UPDATE benutzer SET passwort_hash = ? WHERE benutzer_id = ?",
+                (hashed_password.decode('utf-8'), benutzer_id)
+            )
+            
+            return True, "Passwort erfolgreich geändert"
+            
+        except Exception as e:
+            return False, f"Fehler beim Ändern des Passworts: {str(e)}"
+    
     def _save_token(self, token, email, approved=True):
         """Speichert Token lokal"""
         data = {

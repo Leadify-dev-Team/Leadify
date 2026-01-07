@@ -106,40 +106,55 @@ class AussendienstManager:
     
     def create_lead(self, ansprechpartner_id, produkt_id, produktgruppe_id,
                    produktzustand_id, quelle_id, erfasser_id, 
-                   bearbeiter_id=None, beschreibung=None):
+                   bearbeiter_id=None, beschreibung=None, bild_pfad=None):
         """
         Erstellt neuen Lead.
         WICHTIG: firma_id wird NICHT gespeichert (kommt über ansprechpartner)!
         
+        Args:
+            bild_pfad: Optional - Pfad zum hochgeladenen Bild (noch nicht implementiert)
+        
         Returns: lead_id des neu erstellten Leads oder None bei Fehler
         """
-        # Berechne nächste lead_id (da kein auto_increment)
-        max_lead = self.db.fetch_one("SELECT MAX(lead_id) as max_id FROM lead")
-        next_lead_id = (max_lead['max_id'] or 0) + 1
+        # Bild-Logik: 0 = kein Bild, sonst Auto-Increment
+        bild_id = 0  # Standard: kein Bild
         
+        # TODO: Später implementieren - Bild hochladen
+        if bild_pfad:
+            # Bild-Eintrag mit Pfad erstellen
+            bild_sql = "INSERT INTO bild (pfad) VALUES (?)"
+            bild_result = self.db.query(bild_sql, (bild_pfad,))
+            
+            if bild_result:
+                bild_id = self.db.last_insert_id
+            else:
+                print("[WARNING] Konnte Bild nicht speichern, verwende bild_id = 0")
+                bild_id = 0
+        
+        # Lead erstellen - lead_id ist Auto-Increment
         sql = """
             INSERT INTO lead 
-            (lead_id, ansprechpartner_id, produkt_id, produktgruppe_id, 
+            (ansprechpartner_id, produkt_id, produktgruppe_id, 
              produktzustand_id, quelle_id, erfasser_id, bearbeiter_id, 
-             status_id, datum_erfasst)
+             bild_id, status_id, datum_erfasst)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, NOW())
         """
         params = (
-            next_lead_id,
             ansprechpartner_id,
             produkt_id,
             produktgruppe_id,
             produktzustand_id,
             quelle_id,
             erfasser_id,
-            bearbeiter_id
+            bearbeiter_id,
+            bild_id
         )
         
         # Lead erstellen
         result = self.db.query(sql, params)
         
         if result:
-            lead_id = next_lead_id
+            lead_id = self.db.last_insert_id
             
             # Beschreibung als Kommentar hinzufügen (falls vorhanden)
             if beschreibung and beschreibung.strip():
