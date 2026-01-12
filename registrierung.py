@@ -14,6 +14,7 @@ from aussendienst_view import AussendienstView
 # ========== Admin-Imports ==========
 from admin_menu import AdminMenuView
 from lead_loeschen import LeadLoeschenView
+from benutzerfreigabe import BenutzerfreigabeView
 # ====================================
 
 # ========== Auswertungs-Imports ==========
@@ -736,6 +737,14 @@ class AppController:
         
         delete_view = LeadLoeschenView(self.page, self.db, self.current_user, self)
         delete_view.render()
+    
+    def show_benutzerfreigabe(self):
+        """Zeigt die Benutzerfreigabe-Ansicht (nur für Admins)"""
+        if self.current_user.get('rolle_id') != 0:
+            return
+        
+        benutzerfreigabe_view = BenutzerfreigabeView(self.page, self.current_user, self.db, self)
+        benutzerfreigabe_view.render()
     # ====================================
     
     # ========== Auswertungs-Methoden ==========

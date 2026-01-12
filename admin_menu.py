@@ -17,6 +17,9 @@ class AdminMenuView:
         self.page.clean()
         self.page.padding = 0
         
+        # Synchronisiere Dark Mode mit page.theme_mode
+        self.dark_mode = self.page.theme_mode == ft.ThemeMode.DARK
+        
         # Farben basierend auf Dark Mode
         bg_color = "#1a1f2e" if self.dark_mode else "#f1f5f9"
         header_bg = "#0f172a" if self.dark_mode else "#ffffff"
@@ -115,7 +118,7 @@ class AdminMenuView:
                     title="Neue Nutzer zur Freigabe",
                     description="Neu registrierte Nutzer anzeigen und freigeben.",
                     color="#713f12",
-                    on_click=lambda e: self._show_placeholder("Nutzerfreigabe"),
+                    on_click=lambda e: self._navigate_to_benutzerfreigabe(),
                     bg_color=tile_bg,
                     text_color=text_color
                 ),
@@ -177,14 +180,26 @@ class AdminMenuView:
     
     def _show_account_menu(self, e):
         """Zeigt das Account-Menü als Drawer rechts"""
+        # Synchronisiere Dark Mode mit page.theme_mode
+        self.dark_mode = self.page.theme_mode == ft.ThemeMode.DARK
+        
+        # Farben basierend auf Dark Mode
+        bg_color = "#1a1f2e" if self.dark_mode else "#ffffff"
+        header_bg = "#0f172a" if self.dark_mode else "#f8fafc"
+        text_color = "white" if self.dark_mode else "#1e293b"
+        text_secondary = "#94a3b8" if self.dark_mode else "#64748b"
+        icon_color = "#94a3b8" if self.dark_mode else "#475569"
+        divider_color = "#334155" if self.dark_mode else "#e2e8f0"
+        
         def close_drawer(e):
             self.page.close(self.account_menu)
             self.page.update()
         
         def toggle_dark_mode(e):
-            self.dark_mode = not self.dark_mode
-            if self.dark_mode_switch:
-                self.dark_mode_switch.value = self.dark_mode
+            # Wechsle page.theme_mode statt lokale dark_mode Variable
+            new_theme = ft.ThemeMode.LIGHT if self.page.theme_mode == ft.ThemeMode.DARK else ft.ThemeMode.DARK
+            self.page.theme_mode = new_theme
+            self.page.update()
             close_drawer(e)
             self.render()  # Neu rendern mit neuen Farben
         
@@ -211,10 +226,10 @@ class AdminMenuView:
                     content=ft.Column([
                         ft.Row([
                             ft.Container(
-                                content=ft.Icon(ft.Icons.ACCOUNT_CIRCLE, size=40, color="#475569"),
+                                content=ft.Icon(ft.Icons.ACCOUNT_CIRCLE, size=40, color=icon_color),
                                 width=60,
                                 height=60,
-                                bgcolor="#e2e8f0",
+                                bgcolor="#e2e8f0" if not self.dark_mode else "#334155",
                                 border_radius=30,
                                 alignment=ft.alignment.center,
                             ),
@@ -223,59 +238,59 @@ class AdminMenuView:
                                     f"{self.current_user.get('vorname', '')} {self.current_user.get('nachname', '')}",
                                     size=16,
                                     weight=ft.FontWeight.BOLD,
-                                    color="#1e293b",
+                                    color=text_color,
                                 ),
                                 ft.Text(
                                     self.current_user.get('email', 'ausendienst@leadify.com'),
                                     size=13,
-                                    color="#64748b",
+                                    color=text_secondary,
                                 ),
                             ], spacing=2),
                         ], spacing=15),
                     ]),
                     padding=20,
-                    bgcolor="#f8fafc",
+                    bgcolor=header_bg,
                 ),
                 
-                ft.Divider(height=1, color="#e2e8f0"),
+                ft.Divider(height=1, color=divider_color),
                 
                 # Dark Mode Toggle
                 ft.Container(
                     content=ft.Row([
-                        ft.Icon(ft.Icons.DARK_MODE_OUTLINED, size=20, color="#475569"),
-                        ft.Text("Dark Mode", size=15, color="#1e293b"),
+                        ft.Icon(ft.Icons.DARK_MODE_OUTLINED, size=20, color=icon_color),
+                        ft.Text("Dark Mode", size=15, color=text_color),
                         self.dark_mode_switch,
                     ], spacing=15),
                     padding=ft.padding.symmetric(horizontal=20, vertical=15),
                 ),
                 
-                ft.Divider(height=1, color="#e2e8f0"),
+                ft.Divider(height=1, color=divider_color),
                 
                 # Passwort ändern
                 ft.Container(
                     content=ft.Row([
-                        ft.Icon(ft.Icons.LOCK_OUTLINED, size=20, color="#475569"),
-                        ft.Text("Passwort ändern", size=15, color="#1e293b"),
+                        ft.Icon(ft.Icons.LOCK_OUTLINED, size=20, color=icon_color),
+                        ft.Text("Passwort ändern", size=15, color=text_color),
                     ], spacing=15),
                     padding=ft.padding.symmetric(horizontal=20, vertical=15),
                     on_click=change_password,
                     ink=True,
                 ),
                 
-                ft.Divider(height=1, color="#e2e8f0"),
+                ft.Divider(height=1, color=divider_color),
                 
                 # Abmelden
                 ft.Container(
                     content=ft.Row([
-                        ft.Icon(ft.Icons.LOGOUT, size=20, color="#475569"),
-                        ft.Text("Abmelden", size=15, color="#1e293b"),
+                        ft.Icon(ft.Icons.LOGOUT, size=20, color=icon_color),
+                        ft.Text("Abmelden", size=15, color=text_color),
                     ], spacing=15),
                     padding=ft.padding.symmetric(horizontal=20, vertical=15),
                     on_click=logout,
                     ink=True,
                 ),
             ],
-            bgcolor="white",
+            bgcolor=bg_color,
         )
         
         self.page.open(self.account_menu)
@@ -285,6 +300,11 @@ class AdminMenuView:
         """Navigiert zur Lead-Löschung"""
         if self.app_controller:
             self.app_controller.show_delete_leads()
+    
+    def _navigate_to_benutzerfreigabe(self):
+        """Navigiert zur Benutzerfreigabe"""
+        if self.app_controller:
+            self.app_controller.show_benutzerfreigabe()
     
     def _show_placeholder(self, feature_name):
         """Zeigt Placeholder für noch nicht implementierte Features"""
