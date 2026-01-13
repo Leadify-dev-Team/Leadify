@@ -11,6 +11,8 @@ class AdminMenuView:
         self.account_menu = None
         self.dark_mode = True  # Standard: Dark Mode aktiv
         self.dark_mode_switch = None
+        self.notification_badge = None
+        self.notification_count = 0
     
     def render(self):
         """Zeigt das Admin-Hauptmenü"""
@@ -44,11 +46,7 @@ class AdminMenuView:
                     ft.Text("Administrator", size=16, color=text_secondary),
                 ], spacing=10),
                 ft.Row([
-                    ft.IconButton(
-                        icon=ft.Icons.EMAIL_OUTLINED,
-                        icon_color=text_color,
-                        icon_size=20,
-                    ),
+                    self._create_notification_button(text_color),
                     ft.Container(
                         content=ft.IconButton(
                             icon=ft.Icons.ACCOUNT_CIRCLE,
@@ -105,17 +103,8 @@ class AdminMenuView:
                     text_color=text_color
                 ),
                 self._create_tile(
-                    icon=ft.Icons.ARCHIVE_OUTLINED,
-                    title="Archivierte Leads verwalten",
-                    description="Archivierte Leads anzeigen und wiederherstellen.",
-                    color="#14532d",
-                    on_click=lambda e: self._show_placeholder("Archivierte Leads"),
-                    bg_color=tile_bg,
-                    text_color=text_color
-                ),
-                self._create_tile(
                     icon=ft.Icons.PERSON_ADD_OUTLINED,
-                    title="Neue Nutzer zur Freigabe",
+                    title="Nutzer freigabe",
                     description="Neu registrierte Nutzer anzeigen und freigeben.",
                     color="#713f12",
                     on_click=lambda e: self._navigate_to_benutzerfreigabe(),
@@ -323,8 +312,84 @@ class AdminMenuView:
         self.page.update()
     
     def _show_drawer(self):
-        """Zeigt Navigation Drawer (optional für später)"""
-        pass
+        """Zeigt Navigation Drawer mit den Admin-Aktionen"""
+        # Synchronisiere Dark Mode mit page.theme_mode
+        self.dark_mode = self.page.theme_mode == ft.ThemeMode.DARK
+        
+        # Farben basierend auf Dark Mode
+        bg_color = "#1a1f2e" if self.dark_mode else "#ffffff"
+        header_bg = "#0f172a" if self.dark_mode else "#f8fafc"
+        text_color = "white" if self.dark_mode else "#1e293b"
+        text_secondary = "#94a3b8" if self.dark_mode else "#64748b"
+        icon_color = "#94a3b8" if self.dark_mode else "#475569"
+        divider_color = "#334155" if self.dark_mode else "#e2e8f0"
+        
+        def close_drawer(e):
+            self.page.close(drawer)
+            self.page.update()
+        
+        def navigate_delete_leads(e):
+            close_drawer(e)
+            self._navigate_to_delete_leads()
+        
+        def navigate_benutzerfreigabe(e):
+            close_drawer(e)
+            self._navigate_to_benutzerfreigabe()
+        
+        # Navigation Drawer erstellen
+        drawer = ft.NavigationDrawer(
+            position=ft.NavigationDrawerPosition.START,  # Links öffnen
+            controls=[
+                # Header
+                ft.Container(
+                    content=ft.Column([
+                        ft.Text(
+                            "Leadify",
+                            size=24,
+                            weight=ft.FontWeight.BOLD,
+                            color=text_color,
+                        ),
+                        ft.Text(
+                            "Administrator",
+                            size=13,
+                            color=text_secondary,
+                        ),
+                    ]),
+                    padding=20,
+                    bgcolor=header_bg,
+                ),
+                
+                ft.Divider(height=1, color=divider_color),
+                
+                # Leads löschen
+                ft.Container(
+                    content=ft.Row([
+                        ft.Icon(ft.Icons.DELETE_OUTLINE, size=20, color=icon_color),
+                        ft.Text("Leads löschen", size=15, color=text_color),
+                    ], spacing=15),
+                    padding=ft.padding.symmetric(horizontal=20, vertical=15),
+                    on_click=navigate_delete_leads,
+                    ink=True,
+                ),
+                
+                ft.Divider(height=1, color=divider_color),
+                
+                # Nutzer freigabe
+                ft.Container(
+                    content=ft.Row([
+                        ft.Icon(ft.Icons.PERSON_ADD_OUTLINED, size=20, color=icon_color),
+                        ft.Text("Nutzer freigabe", size=15, color=text_color),
+                    ], spacing=15),
+                    padding=ft.padding.symmetric(horizontal=20, vertical=15),
+                    on_click=navigate_benutzerfreigabe,
+                    ink=True,
+                ),
+            ],
+            bgcolor=bg_color,
+        )
+        
+        self.page.open(drawer)
+        self.page.update()
     
     def _logout(self):
         """Logout und zurück zur Anmeldung"""
@@ -333,3 +398,213 @@ class AdminMenuView:
             if hasattr(self.app_controller, 'auth'):
                 self.app_controller.auth.logout()
             self.app_controller.start()
+    
+    def _get_notification_count(self):
+        """Zählt die Benachrichtigungen (ausstehende Nutzer + Leads)"""
+        count = 0
+        
+        # Zähle ausstehende Nutzer zur Freigabe (is_approved = 0, mit Passwort und Token)
+        if self.app_controller and hasattr(self.app_controller, 'db'):
+            try:
+                sql = """
+                    SELECT COUNT(*) as count FROM benutzer 
+                    WHERE is_approved = 0 
+                    AND passwort_hash IS NOT NULL AND passwort_hash != '' 
+                    AND session_token IS NOT NULL AND session_token != ''
+                """
+                result = self.app_controller.db.fetch_one(sql)
+                if result:
+                    count += result.get('count', 0)
+            except Exception as e:
+                print(f"[ERROR] Fehler beim Zählen ausstehender Nutzer: {e}")
+        
+        # Zähle Leads zum Löschen (Status 4, 6, 7)
+        if self.app_controller and hasattr(self.app_controller, 'db'):
+            try:
+                sql = "SELECT COUNT(*) as count FROM lead WHERE status_id IN (4, 6, 7)"
+                result = self.app_controller.db.fetch_one(sql)
+                if result:
+                    count += result.get('count', 0)
+            except Exception as e:
+                print(f"[ERROR] Fehler beim Zählen ausstehender Leads: {e}")
+        
+        return count
+    
+    def _create_notification_button(self, text_color):
+        """Erstellt den Benachrichtigungs-Button mit Badge"""
+        self.notification_count = self._get_notification_count()
+        
+        # Badge-Container
+        badge = ft.Container(
+            content=ft.Text(
+                str(self.notification_count) if self.notification_count > 0 else "",
+                size=10,
+                color="white",
+                weight=ft.FontWeight.BOLD,
+            ),
+            bgcolor="#ef4444",
+            width=20,
+            height=20,
+            border_radius=10,
+            alignment=ft.alignment.center,
+            visible=self.notification_count > 0,
+        )
+        
+        self.notification_badge = badge
+        
+        return ft.Stack([
+            ft.IconButton(
+                icon=ft.Icons.EMAIL_OUTLINED,
+                icon_color=text_color,
+                icon_size=20,
+                on_click=lambda e: self._show_notification_menu(e),
+            ),
+            ft.Container(
+                content=badge,
+                right=0,
+                top=0,
+            ),
+        ])
+    
+    def _show_notification_menu(self, e):
+        """Zeigt das Benachrichtigungs-Menü"""
+        # Synchronisiere Dark Mode mit page.theme_mode
+        self.dark_mode = self.page.theme_mode == ft.ThemeMode.DARK
+        
+        # Farben basierend auf Dark Mode
+        bg_color = "#1a1f2e" if self.dark_mode else "#ffffff"
+        header_bg = "#0f172a" if self.dark_mode else "#f8fafc"
+        text_color = "white" if self.dark_mode else "#1e293b"
+        text_secondary = "#94a3b8" if self.dark_mode else "#64748b"
+        icon_color = "#94a3b8" if self.dark_mode else "#475569"
+        divider_color = "#334155" if self.dark_mode else "#e2e8f0"
+        tile_bg = "#1e293b" if self.dark_mode else "#f1f5f9"
+        
+        def close_menu(e):
+            self.page.close(notification_menu)
+            self.page.update()
+        
+        def navigate_benutzerfreigabe(e):
+            close_menu(e)
+            self._navigate_to_benutzerfreigabe()
+        
+        def navigate_delete_leads(e):
+            close_menu(e)
+            self._navigate_to_delete_leads()
+        
+        # Zähle ausstehende Nutzer
+        pending_users = 0
+        if self.app_controller and hasattr(self.app_controller, 'db'):
+            try:
+                sql = """
+                    SELECT COUNT(*) as count FROM benutzer 
+                    WHERE is_approved = 0 
+                    AND passwort_hash IS NOT NULL AND passwort_hash != '' 
+                    AND session_token IS NOT NULL AND session_token != ''
+                """
+                result = self.app_controller.db.fetch_one(sql)
+                if result:
+                    pending_users = result.get('count', 0)
+            except Exception as e:
+                print(f"[ERROR] Fehler beim Zählen ausstehender Nutzer: {e}")
+                pending_users = 0
+        
+        # Zähle Leads zum Löschen
+        pending_leads = 0
+        if self.app_controller and hasattr(self.app_controller, 'db'):
+            try:
+                sql = "SELECT COUNT(*) as count FROM lead WHERE status_id IN (4, 6, 7)"
+                result = self.app_controller.db.fetch_one(sql)
+                if result:
+                    pending_leads = result.get('count', 0)
+            except:
+                pass
+        
+        notifications = []
+        
+        # Benachrichtigungen erstellen
+        if pending_users > 0:
+            notifications.append(
+                ft.Container(
+                    content=ft.Row([
+                        ft.Icon(ft.Icons.PERSON_ADD_OUTLINED, size=24, color="#f59e0b"),
+                        ft.Column([
+                            ft.Text(f"{pending_users} Nutzer zur Freigabe", size=14, color=text_color, weight=ft.FontWeight.W_600),
+                            ft.Text("Neue registrierte Nutzer warten auf Freigabe", size=12, color=text_secondary),
+                        ], spacing=2, expand=True),
+                    ], spacing=15),
+                    padding=15,
+                    bgcolor=tile_bg,
+                    border_radius=8,
+                    on_click=navigate_benutzerfreigabe,
+                    ink=True,
+                )
+            )
+        
+        if pending_leads > 0:
+            notifications.append(
+                ft.Container(
+                    content=ft.Row([
+                        ft.Icon(ft.Icons.DELETE_OUTLINE, size=24, color="#ef4444"),
+                        ft.Column([
+                            ft.Text(f"{pending_leads} Leads zum Löschen", size=14, color=text_color, weight=ft.FontWeight.W_600),
+                            ft.Text("Leads sind zum Löschen vorgemerkt", size=12, color=text_secondary),
+                        ], spacing=2, expand=True),
+                    ], spacing=15),
+                    padding=15,
+                    bgcolor=tile_bg,
+                    border_radius=8,
+                    on_click=navigate_delete_leads,
+                    ink=True,
+                )
+            )
+        
+        if not notifications:
+            notifications.append(
+                ft.Container(
+                    content=ft.Column([
+                        ft.Icon(ft.Icons.DONE_ALL, size=48, color=icon_color),
+                        ft.Text("Keine Benachrichtigungen", size=16, color=text_color, weight=ft.FontWeight.W_600),
+                        ft.Text("Alles ist auf dem neuesten Stand", size=13, color=text_secondary),
+                    ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=10),
+                    padding=30,
+                    alignment=ft.alignment.center,
+                )
+            )
+        
+        # Benachrichtigungs-Menü als Drawer rechts
+        notification_menu = ft.NavigationDrawer(
+            position=ft.NavigationDrawerPosition.END,
+            controls=[
+                # Header
+                ft.Container(
+                    content=ft.Column([
+                        ft.Text(
+                            "Benachrichtigungen",
+                            size=18,
+                            weight=ft.FontWeight.BOLD,
+                            color=text_color,
+                        ),
+                        ft.Text(
+                            f"{len([n for n in notifications if 'Benachrichtigungen' not in str(n.content)])} ausstehend",
+                            size=12,
+                            color=text_secondary,
+                        ),
+                    ]),
+                    padding=20,
+                    bgcolor=header_bg,
+                ),
+                
+                ft.Divider(height=1, color=divider_color),
+                
+                # Benachrichtigungen
+                ft.Container(
+                    content=ft.Column(notifications, spacing=10),
+                    padding=15,
+                ),
+            ],
+            bgcolor=bg_color,
+        )
+        
+        self.page.open(notification_menu)
+        self.page.update()

@@ -94,13 +94,14 @@ class BenutzerfreigabeView:
         self.page.add(main_content)
     
     def _load_pending_users_silent(self):
-        """Lädt alle Benutzer mit is_approved = NULL (ohne Neu-Rendern)"""
+        """Lädt alle Benutzer mit is_approved = 0 und Passwort + Token (ohne Neu-Rendern)"""
         try:
             sql = """
                 SELECT benutzer_id, vorname, nachname, email, rolle_id
                 FROM benutzer 
-                WHERE is_approved IS NULL
-                AND ((passwort_hash IS NOT NULL AND passwort_hash != '') OR (session_token IS NOT NULL AND session_token != ''))
+                WHERE is_approved = 0 
+                AND passwort_hash IS NOT NULL AND passwort_hash != '' 
+                AND session_token IS NOT NULL AND session_token != ''
                 ORDER BY benutzer_id DESC
             """
             self.pending_users = self.db.fetch_all(sql)
@@ -109,13 +110,14 @@ class BenutzerfreigabeView:
             self.pending_users = []
     
     def _load_pending_users(self):
-        """Lädt alle Benutzer mit is_approved = NULL und rendert die Seite neu"""
+        """Lädt alle Benutzer mit is_approved = 0 und Passwort + Token und rendert die Seite neu"""
         try:
             sql = """
                 SELECT benutzer_id, vorname, nachname, email, rolle_id
                 FROM benutzer 
-                WHERE is_approved IS NULL
-                AND ((passwort_hash IS NOT NULL AND passwort_hash != '') OR (session_token IS NOT NULL AND session_token != ''))
+                WHERE is_approved = 0 
+                AND passwort_hash IS NOT NULL AND passwort_hash != '' 
+                AND session_token IS NOT NULL AND session_token != ''
                 ORDER BY benutzer_id DESC
             """
             self.pending_users = self.db.fetch_all(sql)

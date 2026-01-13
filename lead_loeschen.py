@@ -18,7 +18,20 @@ class LeadLoeschenView:
         """Zeigt die Lead-Löschungs-Ansicht"""
         self.page.clean()
         self.page.padding = 0
-        self.page.bgcolor = "#1a1f2e"
+        
+        # Synchronisiere Dark Mode mit page.theme_mode
+        dark_mode = self.page.theme_mode == ft.ThemeMode.DARK
+        
+        # Farben basierend auf Dark Mode
+        bg_color = "#1a1f2e" if dark_mode else "#f1f5f9"
+        header_bg = "#0f172a" if dark_mode else "#ffffff"
+        text_color = "white" if dark_mode else "#1e293b"
+        text_secondary = "#94a3b8" if dark_mode else "#64748b"
+        text_tertiary = "#64748b" if dark_mode else "#94a3b8"
+        tile_bg = "#1e293b" if dark_mode else "#ffffff"
+        border_color = "#334155" if dark_mode else "#e2e8f0"
+        
+        self.page.bgcolor = bg_color
         
         # Leads aus Datenbank laden
         self._load_leads()
@@ -28,13 +41,13 @@ class LeadLoeschenView:
             content=ft.Row([
                 ft.IconButton(
                     icon=ft.Icons.ARROW_BACK,
-                    icon_color="white",
+                    icon_color=text_color,
                     on_click=lambda e: self._go_back(),
                     tooltip="Zurück zum Admin-Menü"
                 ),
-                ft.Text("Leads löschen", size=24, color="white", weight=ft.FontWeight.BOLD),
+                ft.Text("Leads löschen", size=24, color=text_color, weight=ft.FontWeight.BOLD),
             ], spacing=15),
-            bgcolor="#0f172a",
+            bgcolor=header_bg,
             padding=ft.padding.symmetric(horizontal=30, vertical=20),
         )
         
@@ -43,7 +56,7 @@ class LeadLoeschenView:
             content=ft.Text(
                 "Hier werden Leads angezeigt, die zum Löschen vorgemerkt wurden. Ausgewählte Leads werden nach 30 Tagen endgültig gelöscht.",
                 size=14,
-                color="#94a3b8",
+                color=text_secondary,
             ),
             padding=ft.padding.symmetric(horizontal=30, vertical=15),
         )
@@ -63,10 +76,10 @@ class LeadLoeschenView:
                     ],
                     width=250,
                     on_change=self._on_filter_change,
-                    bgcolor="#1e293b",
-                    border_color="#334155",
-                    color="white",
-                    label_style=ft.TextStyle(color="#94a3b8"),
+                    bgcolor=tile_bg,
+                    border_color=border_color,
+                    color=text_color,
+                    label_style=ft.TextStyle(color=text_secondary),
                 ),
                 ft.Container(expand=True),
                 # Löschen-Button
@@ -89,7 +102,7 @@ class LeadLoeschenView:
             label="Alle auswählen",
             value=False,
             on_change=self._toggle_select_all,
-            label_style=ft.TextStyle(color="white"),
+            label_style=ft.TextStyle(color=text_color),
         )
         
         select_all_section = ft.Container(
@@ -103,7 +116,7 @@ class LeadLoeschenView:
             scroll=ft.ScrollMode.AUTO,
         )
         
-        self._render_lead_list()
+        self._render_lead_list(dark_mode, text_color, text_secondary, text_tertiary, tile_bg, border_color)
         
         lead_list_section = ft.Container(
             content=self.lead_list_container,
@@ -116,7 +129,7 @@ class LeadLoeschenView:
             header,
             info_text,
             filter_section,
-            ft.Divider(height=1, color="#334155"),
+            ft.Divider(height=1, color=border_color),
             select_all_section,
             lead_list_section,
         ], spacing=0, expand=True)
@@ -150,7 +163,7 @@ class LeadLoeschenView:
         results = self.db.fetch_all(sql)
         self.all_leads = results if results else []
     
-    def _render_lead_list(self):
+    def _render_lead_list(self, dark_mode, text_color, text_secondary, text_tertiary, tile_bg, border_color):
         """Rendert die Lead-Liste basierend auf Filter"""
         self.lead_list_container.controls.clear()
         
@@ -162,9 +175,9 @@ class LeadLoeschenView:
             self.lead_list_container.controls.append(
                 ft.Container(
                     content=ft.Column([
-                        ft.Icon(ft.Icons.INBOX_OUTLINED, size=64, color="#475569"),
-                        ft.Text("Keine Leads gefunden", size=18, color="#94a3b8"),
-                        ft.Text("Ändere die Filter-Einstellungen", size=14, color="#64748b"),
+                        ft.Icon(ft.Icons.INBOX_OUTLINED, size=64, color=text_secondary),
+                        ft.Text("Keine Leads gefunden", size=18, color=text_secondary),
+                        ft.Text("Ändere die Filter-Einstellungen", size=14, color=text_tertiary),
                     ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=10),
                     padding=40,
                     alignment=ft.alignment.center,
@@ -173,7 +186,7 @@ class LeadLoeschenView:
         else:
             # Lead-Cards erstellen
             for lead in filtered_leads:
-                card = self._create_lead_card(lead)
+                card = self._create_lead_card(lead, dark_mode, text_color, text_secondary, text_tertiary, tile_bg, border_color)
                 self.lead_list_container.controls.append(card)
         
         self.page.update()
@@ -190,7 +203,7 @@ class LeadLoeschenView:
             return [l for l in self.all_leads if l['status_id'] == 7]
         return self.all_leads
     
-    def _create_lead_card(self, lead):
+    def _create_lead_card(self, lead, dark_mode, text_color, text_secondary, text_tertiary, tile_bg, border_color):
         """Erstellt eine Lead-Card"""
         lead_id = lead['lead_id']
         is_selected = lead_id in self.selected_leads
@@ -212,14 +225,14 @@ class LeadLoeschenView:
                     on_change=lambda e, lid=lead_id: self._toggle_lead_selection(lid),
                 ),
                 # Lead-Info Icon
-                ft.Icon(ft.Icons.DESCRIPTION_OUTLINED, color="#64748b", size=24),
+                ft.Icon(ft.Icons.DESCRIPTION_OUTLINED, color=text_secondary, size=24),
                 # Lead-Details
                 ft.Column([
                     ft.Row([
                         ft.Text(
                             f"Lead #{lead_id} - {lead['firma_name']}",
                             size=16,
-                            color="white",
+                            color=text_color,
                             weight=ft.FontWeight.W_600,
                         ),
                     ]),
@@ -227,7 +240,7 @@ class LeadLoeschenView:
                         ft.Text(
                             f"{lead['produktgruppe']} | Status: ",
                             size=13,
-                            color="#94a3b8",
+                            color=text_secondary,
                         ),
                         ft.Container(
                             content=ft.Text(
@@ -256,14 +269,14 @@ class LeadLoeschenView:
                     ft.Text(
                         f"Erfasst von: {lead['erfasser']} | Datum: {lead['datum_erfasst']}",
                         size=12,
-                        color="#64748b",
+                        color=text_tertiary,
                     ),
                 ], spacing=5, expand=True),
             ], spacing=15),
-            bgcolor="#1e293b",
+            bgcolor=tile_bg,
             padding=15,
             border_radius=8,
-            border=ft.border.all(2, "#334155") if is_selected else ft.border.all(1, "#334155"),
+            border=ft.border.all(2, "#334155") if is_selected else ft.border.all(1, border_color),
         )
     
     def _toggle_lead_selection(self, lead_id):
@@ -273,12 +286,22 @@ class LeadLoeschenView:
         else:
             self.selected_leads.add(lead_id)
         
+        # Synchronisiere Dark Mode mit page.theme_mode
+        dark_mode = self.page.theme_mode == ft.ThemeMode.DARK
+        
+        # Farben basierend auf Dark Mode
+        text_color = "white" if dark_mode else "#1e293b"
+        text_secondary = "#94a3b8" if dark_mode else "#64748b"
+        text_tertiary = "#64748b" if dark_mode else "#94a3b8"
+        tile_bg = "#1e293b" if dark_mode else "#ffffff"
+        border_color = "#334155" if dark_mode else "#e2e8f0"
+        
         # Update Select-All Checkbox
         filtered_leads = self._filter_leads()
         all_selected = len(self.selected_leads) == len(filtered_leads) and len(filtered_leads) > 0
         self.select_all_checkbox.value = all_selected
         
-        self.render()
+        self._render_lead_list(dark_mode, text_color, text_secondary, text_tertiary, tile_bg, border_color)
     
     def _toggle_select_all(self, e):
         """Alle Leads aus-/abwählen"""
