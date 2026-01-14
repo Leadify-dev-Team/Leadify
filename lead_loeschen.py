@@ -12,7 +12,8 @@ class LeadLoeschenView:
         self.app_controller = app_controller
         self.selected_leads = set()
         self.all_leads = []
-        self.current_filter = "all"  # all, abgelehnt, archiviert, vorgemerkt
+        self.current_filter = "vorgemerkt"  # all, abgelehnt, vorgemerkt
+        self.delete_button = None  # Referenz für den Löschen-Button
     
     def render(self):
         """Zeigt die Lead-Löschungs-Ansicht"""
@@ -54,7 +55,7 @@ class LeadLoeschenView:
         # Info-Text
         info_text = ft.Container(
             content=ft.Text(
-                "Hier werden Leads angezeigt, die zum Löschen vorgemerkt wurden. Ausgewählte Leads werden nach 30 Tagen endgültig gelöscht.",
+                "Hier werden Leads angezeigt, die zum Löschen vorgemerkt wurden.",
                 size=14,
                 color=text_secondary,
             ),
@@ -71,8 +72,7 @@ class LeadLoeschenView:
                     options=[
                         ft.dropdown.Option("all", "Alle anzeigen"),
                         ft.dropdown.Option("abgelehnt", "Abgelehnt"),
-                        ft.dropdown.Option("archiviert", "Archiviert"),
-                        ft.dropdown.Option("vorgemerkt", "Vorgemerkt zum löschen"),
+                        ft.dropdown.Option("vorgemerkt", "vorgemerkt zum Löschen"),
                     ],
                     width=250,
                     on_change=self._on_filter_change,
@@ -83,24 +83,55 @@ class LeadLoeschenView:
                 ),
                 ft.Container(expand=True),
                 # Löschen-Button
-                ft.ElevatedButton(
-                    content=ft.Row([
-                        ft.Icon(ft.Icons.DELETE_FOREVER, color="white", size=18),
-                        ft.Text("Auswahl endgültig löschen", color="white"),
-                    ], spacing=8),
-                    bgcolor="#dc2626",
-                    color="white",
-                    on_click=lambda e: self._delete_selected(),
-                    disabled=len(self.selected_leads) == 0,
+            ]),
+            padding=ft.padding.symmetric(horizontal=30, vertical=10),
+        )
+        
+        # Löschen-Button als Instanzvariable für spätere Updates
+        self.delete_button = ft.ElevatedButton(
+            content=ft.Row([
+                ft.Icon(ft.Icons.DELETE_FOREVER, color="white", size=18),
+                ft.Text("Auswahl endgültig löschen", color="white"),
+            ], spacing=8),
+            bgcolor="#dc2626",
+            color="white",
+            on_click=lambda e: self._delete_selected(),
+            disabled=len(self.selected_leads) == 0,
+        )
+        
+        # Filter-Sektion mit Button
+        filter_section = ft.Container(
+            content=ft.Row([
+                # Filter Dropdown
+                ft.Dropdown(
+                    label="Filter nach Status",
+                    value=self.current_filter,
+                    options=[
+                        ft.dropdown.Option("all", "Alle anzeigen"),
+                        ft.dropdown.Option("abgelehnt", "Abgelehnt"),
+                        ft.dropdown.Option("vorgemerkt", "Vorgemerkt zum Löschen"),
+                    ],
+                    width=250,
+                    on_change=self._on_filter_change,
+                    bgcolor=tile_bg,
+                    border_color=border_color,
+                    color=text_color,
+                    label_style=ft.TextStyle(color=text_secondary),
                 ),
+                ft.Container(expand=True),
+                self.delete_button,
             ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
             padding=ft.padding.symmetric(horizontal=30, vertical=10),
         )
         
         # Alle auswählen Checkbox
+        # Prüfe ob alle gefilterten Leads bereits ausgewählt sind
+        filtered_leads_for_check = self._filter_leads()
+        all_selected = len(self.selected_leads) > 0 and len(self.selected_leads) == len(filtered_leads_for_check) if filtered_leads_for_check else False
+        
         self.select_all_checkbox = ft.Checkbox(
             label="Alle auswählen",
-            value=False,
+            value=all_selected,
             on_change=self._toggle_select_all,
             label_style=ft.TextStyle(color=text_color),
         )
@@ -138,10 +169,10 @@ class LeadLoeschenView:
     
     def _load_leads(self):
         """Lädt Leads aus der Datenbank (zum Löschen vorgemerkt)"""
-        # SQL-Query für Leads die zum Löschen vorgemerkt sind (Status 4 = abgelehnt)
-        # oder bereits archiviert sind
+        # SQL-Query für Leads die zum Löschen vorgemerkt sind
+        # Entweder durch Status (abgelehnt, archiviert) oder durch Mitarbeiter markiert
         sql = """
-            SELECT 
+            SELECT DISTINCT
                 l.lead_id,
                 f.name as firma_name,
                 CONCAT(a.vorname, ' ', a.nachname) as ansprechpartner,
@@ -149,14 +180,19 @@ class LeadLoeschenView:
                 s.status as status_name,
                 l.status_id,
                 l.datum_erfasst,
-                CONCAT(b.vorname, ' ', b.nachname) as erfasser
+                CONCAT(b.vorname, ' ', b.nachname) as erfasser,
+                CASE 
+                    WHEN la.aktion_typ = 'zum Löschen vorgemerkt' THEN 1 
+                    ELSE 0 
+                END as ist_vorgemerkt
             FROM lead l
             LEFT JOIN ansprechpartner a ON l.ansprechpartner_id = a.id
             LEFT JOIN firma f ON a.firma_id = f.id
             LEFT JOIN produktgruppe p ON l.produktgruppe_id = p.produkt_id
             LEFT JOIN status s ON l.status_id = s.id
             LEFT JOIN benutzer b ON l.erfasser_id = b.benutzer_id
-            WHERE l.status_id IN (4, 6, 7)
+            LEFT JOIN lead_aktionen la ON l.lead_id = la.lead_id AND la.aktion_typ = 'zum Löschen vorgemerkt'
+            WHERE l.status_id IN (4, 6) OR la.aktion_typ = 'zum Löschen vorgemerkt'
             ORDER BY l.datum_erfasst DESC
         """
         
@@ -197,10 +233,8 @@ class LeadLoeschenView:
             return self.all_leads
         elif self.current_filter == "abgelehnt":
             return [l for l in self.all_leads if l['status_id'] == 4]
-        elif self.current_filter == "archiviert":
-            return [l for l in self.all_leads if l['status_id'] == 6]
         elif self.current_filter == "vorgemerkt":
-            return [l for l in self.all_leads if l['status_id'] == 7]
+            return [l for l in self.all_leads if l.get('ist_vorgemerkt', 0) == 1]
         return self.all_leads
     
     def _create_lead_card(self, lead, dark_mode, text_color, text_secondary, text_tertiary, tile_bg, border_color):
@@ -212,10 +246,14 @@ class LeadLoeschenView:
         status_colors = {
             4: ("#7f1d1d", "Abgelehnt"),
             6: ("#1e3a8a", "Archiviert"),
-            7: ("#854d0e", "Vorgemerkt zum löschen"),
         }
         
-        status_color, status_text = status_colors.get(lead['status_id'], ("#475569", lead['status_name']))
+        # Prüfe ob vorgemerkt
+        if lead.get('ist_vorgemerkt', 0) == 1:
+            status_color = "#854d0e"
+            status_text = "Vorgemerkt zum Löschen"
+        else:
+            status_color, status_text = status_colors.get(lead['status_id'], ("#475569", lead['status_name']))
         
         return ft.Container(
             content=ft.Row([
@@ -255,7 +293,7 @@ class LeadLoeschenView:
                         ),
                         ft.Container(
                             content=ft.Text(
-                                "vorgemerkt zum löschen" if lead['status_id'] == 7 else "",
+                                "Vorgemerkt zum Löschen" if lead['status_id'] == 7 else "",
                                 size=11,
                                 color="white",
                                 weight=ft.FontWeight.BOLD,
@@ -286,6 +324,10 @@ class LeadLoeschenView:
         else:
             self.selected_leads.add(lead_id)
         
+        # Aktualisiere Button-Status
+        if self.delete_button:
+            self.delete_button.disabled = len(self.selected_leads) == 0
+        
         # Synchronisiere Dark Mode mit page.theme_mode
         dark_mode = self.page.theme_mode == ft.ThemeMode.DARK
         
@@ -313,10 +355,21 @@ class LeadLoeschenView:
                 self.selected_leads.add(lead['lead_id'])
         else:
             # Alle abwählen
-            for lead in filtered_leads:
-                self.selected_leads.discard(lead['lead_id'])
+            self.selected_leads.clear()
         
-        self.render()
+        # Aktualisiere Button-Status
+        if self.delete_button:
+            self.delete_button.disabled = len(self.selected_leads) == 0
+        
+        # Aktualisiere nur die Lead-Liste statt gesamte Seite neu zu rendern
+        dark_mode = self.page.theme_mode == ft.ThemeMode.DARK
+        text_color = "white" if dark_mode else "#1e293b"
+        text_secondary = "#94a3b8" if dark_mode else "#64748b"
+        text_tertiary = "#64748b" if dark_mode else "#94a3b8"
+        tile_bg = "#1e293b" if dark_mode else "#ffffff"
+        border_color = "#334155" if dark_mode else "#e2e8f0"
+        
+        self._render_lead_list(dark_mode, text_color, text_secondary, text_tertiary, tile_bg, border_color)
     
     def _on_filter_change(self, e):
         """Filter wurde geändert"""
@@ -325,44 +378,94 @@ class LeadLoeschenView:
         self.render()
     
     def _delete_selected(self):
-        """Löscht ausgewählte Leads"""
+        """Löscht ausgewählte Leads endgültig"""
         if not self.selected_leads:
             return
         
         def confirm_delete(e):
-            # Leads löschen
-            for lead_id in self.selected_leads:
-                sql = "DELETE FROM lead WHERE lead_id = ?"
-                self.db.query(sql, (lead_id,))
-            
-            self.page.close(dialog)
-            self.selected_leads.clear()
-            self._load_leads()
-            self.render()
-            
-            # Erfolgs-Snackbar
-            self.page.show_snack_bar(
-                ft.SnackBar(
-                    content=ft.Text("Leads erfolgreich gelöscht", color="white"),
+            try:
+                # Leads mit allen abhängigen Daten löschen
+                deleted_count = 0
+                for lead_id in self.selected_leads:
+                    # Lösche zuerst abhängige Einträge
+                    # 1. Lead-Aktionen löschen
+                    sql_aktionen = "DELETE FROM lead_aktionen WHERE lead_id = ?"
+                    self.db.query(sql_aktionen, (lead_id,))
+                    
+                    # 2. Kommentare löschen
+                    sql_kommentare = "DELETE FROM kommentar WHERE lead_id = ?"
+                    self.db.query(sql_kommentare, (lead_id,))
+                    
+                    # 3. Lead selbst löschen
+                    sql_lead = "DELETE FROM lead WHERE lead_id = ?"
+                    self.db.query(sql_lead, (lead_id,))
+                    deleted_count += 1
+                
+                self.page.close(dialog)
+                self.selected_leads.clear()
+                self._load_leads()
+                self.render()
+                
+                # Erfolgs-Snackbar
+                snack_bar = ft.SnackBar(
+                    content=ft.Text(
+                        f"{deleted_count} Lead(s) erfolgreich gelöscht",
+                        color="white"
+                    ),
                     bgcolor="#16a34a",
                 )
-            )
+                self.page.snack_bar = snack_bar
+                snack_bar.open = True
+                self.page.update()
+            except Exception as ex:
+                self.page.close(dialog)
+                # Fehler-Snackbar
+                snack_bar = ft.SnackBar(
+                    content=ft.Text(
+                        f"Fehler beim Löschen: {str(ex)}",
+                        color="white"
+                    ),
+                    bgcolor="#dc2626",
+                )
+                self.page.snack_bar = snack_bar
+                snack_bar.open = True
+                self.page.update()
         
         def cancel_delete(e):
             self.page.close(dialog)
+            self.page.update()
         
+        # Bestätigungsdialog mit Warnung
         dialog = ft.AlertDialog(
-            title=ft.Text("Leads endgültig löschen?"),
-            content=ft.Text(
-                f"Möchten Sie {len(self.selected_leads)} Lead(s) wirklich endgültig löschen? "
-                "Diese Aktion kann nicht rückgängig gemacht werden!",
-            ),
+            title=ft.Row([
+                ft.Icon(ft.Icons.WARNING, color="#dc2626", size=28),
+                ft.Text("Leads endgültig löschen?", color="#dc2626"),
+            ], spacing=10),
+            content=ft.Column([
+                ft.Text(
+                    f"Sie sind dabei, {len(self.selected_leads)} Lead(s) endgültig zu löschen.",
+                    size=14,
+                    weight=ft.FontWeight.BOLD,
+                ),
+                ft.Container(height=10),
+                ft.Text(
+                    "⚠️ Diese Aktion kann nicht rückgängig gemacht werden!",
+                    color="#dc2626",
+                    size=13,
+                ),
+                ft.Text(
+                    "Alle zugehörigen Aktionen und Kommentare werden ebenfalls gelöscht.",
+                    size=12,
+                    color="grey",
+                ),
+            ], tight=True, spacing=5),
             actions=[
                 ft.TextButton("Abbrechen", on_click=cancel_delete),
-                ft.TextButton(
-                    "Löschen",
+                ft.ElevatedButton(
+                    "Endgültig löschen",
                     on_click=confirm_delete,
-                    style=ft.ButtonStyle(color=ft.Colors.RED),
+                    bgcolor="#dc2626",
+                    color="white",
                 ),
             ],
         )

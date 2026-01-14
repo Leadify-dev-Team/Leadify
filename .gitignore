@@ -213,3 +213,5 @@ session.json
 db_config.py
 leadify_main.sql
 leadify.sql
+update_lead_aktionen.sql
+IMPLEMENTIERUNG_LEAD_LOESCHEN.md

@@ -102,6 +102,7 @@ class LeadStatusManager:
             LEFT JOIN benutzer b ON a.benutzer_id = b.benutzer_id
             LEFT JOIN benutzer z ON a.ziel_benutzer_id = z.benutzer_id
             WHERE a.lead_id = ?
+            AND a.aktion_typ != 'lead_angesehen'
             ORDER BY a.zeitstempel DESC
         """
         return self.db.fetch_all(sql, (lead_id,))
@@ -116,16 +117,139 @@ class LeadStatusManager:
         """
         return self.db.fetch_all(sql, (lead_id,))
     
-    def has_recent_action(self, lead_id: int):
-        """Prüft ob ein Lead innerhalb der letzten 24 Stunden eine Aktion erhalten hat"""
+    def has_recent_action(self, lead_id: int, erfasser_id: int = None):
+        """Prüft ob ein Lead innerhalb der letzten 24 Stunden eine (ungesehene) Aktion erhalten hat"""
+        if erfasser_id:
+            # Hole Zeitstempel der letzten "lead_angesehen" Aktion für diesen Benutzer
+            sql_last_viewed = """
+                SELECT MAX(zeitstempel) as last_viewed
+                FROM lead_aktionen
+                WHERE lead_id = ?
+                AND benutzer_id = ?
+                AND aktion_typ = 'lead_angesehen'
+            """
+            viewed_result = self.db.fetch_one(sql_last_viewed, (lead_id, erfasser_id))
+            last_viewed = viewed_result.get('last_viewed') if viewed_result else None
+            
+            # Prüfe ob es Aktionen gibt, die nach dem letzten Ansehen passiert sind
+            if last_viewed:
+                sql = """
+                    SELECT COUNT(*) as count
+                    FROM lead_aktionen
+                    WHERE lead_id = ?
+                    AND zeitstempel > ?
+                    AND zeitstempel >= NOW() - INTERVAL 24 HOUR
+                    AND aktion_typ NOT IN ('zum Löschen vorgemerkt', 'lead_angesehen')
+                """
+                result = self.db.fetch_one(sql, (lead_id, last_viewed))
+            else:
+                # Wenn noch nie angesehen, zeige alle Aktionen der letzten 24h
+                sql = """
+                    SELECT COUNT(*) as count
+                    FROM lead_aktionen
+                    WHERE lead_id = ?
+                    AND zeitstempel >= NOW() - INTERVAL 24 HOUR
+                    AND aktion_typ NOT IN ('zum Löschen vorgemerkt', 'lead_angesehen')
+                """
+                result = self.db.fetch_one(sql, (lead_id,))
+        else:
+            # Fallback ohne Erfasser-Prüfung
+            sql = """
+                SELECT COUNT(*) as count
+                FROM lead_aktionen
+                WHERE lead_id = ?
+                AND zeitstempel >= NOW() - INTERVAL 24 HOUR
+                AND aktion_typ NOT IN ('zum Löschen vorgemerkt', 'lead_angesehen')
+            """
+            result = self.db.fetch_one(sql, (lead_id,))
+        return result['count'] > 0 if result else False
+    
+    def mark_lead_as_viewed(self, lead_id: int, benutzer_id: int):
+        """Markiert einen Lead als angesehen durch den Erfasser"""
+        # Lösche vorherige "lead_angesehen" Einträge dieses Benutzers für diesen Lead
+        sql_delete = """
+            DELETE FROM lead_aktionen 
+            WHERE lead_id = ? 
+            AND benutzer_id = ? 
+            AND aktion_typ = 'lead_angesehen'
+        """
+        self.db.query(sql_delete, (lead_id, benutzer_id))
+        
+        # Füge neuen "lead_angesehen" Eintrag hinzu
+        sql_insert = """
+            INSERT INTO lead_aktionen (lead_id, benutzer_id, aktion_typ, kommentar)
+            VALUES (?, ?, 'lead_angesehen', NULL)
+        """
+        self.db.query(sql_insert, (lead_id, benutzer_id))
+    
+    def get_last_action_type(self, lead_id: int):
+        """Gibt den Typ der letzten Aktion für einen Lead zurück"""
+        sql = """
+            SELECT aktion_typ
+            FROM lead_aktionen
+            WHERE lead_id = ?
+            ORDER BY zeitstempel DESC
+            LIMIT 1
+        """
+        result = self.db.fetch_one(sql, (lead_id,))
+        return result['aktion_typ'] if result else None
+    
+    def mark_lead_for_deletion(self, lead_id: int, benutzer_id: int, kommentar: str = None):
+        """Markiert einen Lead zum Löschen (nur für Erfasser und nur offene Leads)"""
+        # Prüfe ob Lead dem Benutzer gehört und Status = Offen ist
+        sql_check = """
+            SELECT erfasser_id, status_id
+            FROM lead
+            WHERE lead_id = ?
+        """
+        lead_data = self.db.fetch_one(sql_check, (lead_id,))
+        
+        if not lead_data:
+            return False, "Lead nicht gefunden"
+        
+        if lead_data['erfasser_id'] != benutzer_id:
+            return False, "Sie können nur Ihre eigenen Leads vormerken"
+        
+        if lead_data['status_id'] != 1:  # 1 = Offen
+            return False, "Nur offene Leads können vorgemerkt werden"
+        
+        # Prüfe ob Lead bereits vorgemerkt ist
+        sql_already_marked = """
+            SELECT COUNT(*) as count
+            FROM lead_aktionen
+            WHERE lead_id = ? AND aktion_typ = 'zum Löschen vorgemerkt'
+        """
+        result = self.db.fetch_one(sql_already_marked, (lead_id,))
+        if result and result['count'] > 0:
+            return False, "Lead ist bereits zum Löschen vorgemerkt"
+        
+        # Markierung in lead_aktionen speichern
+        sql_insert = """
+            INSERT INTO lead_aktionen (lead_id, benutzer_id, aktion_typ, kommentar)
+            VALUES (?, ?, 'zum Löschen vorgemerkt', ?)
+        """
+        self.db.query(sql_insert, (lead_id, benutzer_id, kommentar))
+        return True, "Lead wurde erfolgreich zum Löschen vorgemerkt"
+    
+    def is_lead_marked_for_deletion(self, lead_id: int):
+        """Prüft ob ein Lead bereits zum Löschen vorgemerkt ist"""
         sql = """
             SELECT COUNT(*) as count
             FROM lead_aktionen
-            WHERE lead_id = ?
-            AND zeitstempel >= NOW() - INTERVAL 24 HOUR
+            WHERE lead_id = ? AND aktion_typ = 'zum Löschen vorgemerkt'
         """
         result = self.db.fetch_one(sql, (lead_id,))
         return result['count'] > 0 if result else False
+    
+    def get_count_marked_for_deletion(self):
+        """Gibt die Anzahl aller zum Löschen vorgemerkten Leads zurück"""
+        sql = """
+            SELECT COUNT(DISTINCT lead_id) as count
+            FROM lead_aktionen
+            WHERE aktion_typ = 'zum Löschen vorgemerkt'
+        """
+        result = self.db.fetch_one(sql, ())
+        return result['count'] if result else 0
 
 
 # ============================================================================
@@ -314,22 +438,46 @@ class LeadStatusView:
         
         status_icon, status_desc = status_icon_map.get(lead.status_id, (ft.Icons.HELP, "Status unbekannt"))
         
-        # Prüfe ob Lead kürzlich eine Aktion erhalten hat (innerhalb 24h)
-        has_update = self.lead_manager.has_recent_action(lead.lead_id)
+        # Prüfe ob Lead zum Löschen vorgemerkt ist
+        is_marked_for_deletion = self.lead_manager.is_lead_marked_for_deletion(lead.lead_id)
         
-        # Titel-Zeile mit optionalem "AKTUALISIERT" Badge
+        # Prüfe ob Lead kürzlich eine Aktion erhalten hat (innerhalb 24h, außer Löschung)
+        # Nur ungesehene Aktionen berücksichtigen
+        has_update = self.lead_manager.has_recent_action(lead.lead_id, self.current_user['benutzer_id'])
+        
+        # Titel-Zeile mit optionalem Badge
+        badge_controls = []
+        
+        # Wenn zum Löschen vorgemerkt, zeige rotes Badge
+        if is_marked_for_deletion:
+            badge_controls.append(
+                ft.Container(
+                    content=ft.Row([
+                        ft.Icon(ft.Icons.DELETE_OUTLINE, color="white", size=16),
+                        ft.Text("ZUM LÖSCHEN VORGEMERKT", size=11, color="white", weight=ft.FontWeight.BOLD)
+                    ], spacing=3),
+                    bgcolor="#dc2626",
+                    padding=ft.padding.symmetric(horizontal=6, vertical=3),
+                    border_radius=4,
+                )
+            )
+        # Sonst wenn andere Aktionen, zeige orange Badge
+        elif has_update:
+            badge_controls.append(
+                ft.Container(
+                    content=ft.Row([
+                        ft.Icon(ft.Icons.NOTIFICATIONS_ACTIVE, color="white", size=16),
+                        ft.Text("AKTUALISIERT", size=11, color="white", weight=ft.FontWeight.BOLD)
+                    ], spacing=3),
+                    bgcolor="orange",
+                    padding=ft.padding.symmetric(horizontal=6, vertical=3),
+                    border_radius=4,
+                )
+            )
+        
         title_content = ft.Row([
             ft.Text(f"Lead #{lead.lead_id} - {lead.kunde_name}"),
-            ft.Container(
-                content=ft.Row([
-                    ft.Icon(ft.Icons.NOTIFICATIONS_ACTIVE, color="white", size=16),
-                    ft.Text("AKTUALISIERT", size=11, color="white", weight=ft.FontWeight.BOLD)
-                ], spacing=3),
-                bgcolor="orange",
-                padding=ft.padding.symmetric(horizontal=6, vertical=3),
-                border_radius=4,
-                visible=has_update
-            )
+            *badge_controls
         ], spacing=10)
         
         # Card mit Hover-Effekt
@@ -380,6 +528,7 @@ class LeadDetailViewStatus:
         self.manager = manager
         self.lead = lead
         self.parent_view = parent_view
+        self.current_user = parent_view.current_user  # Benutzer vom parent_view holen
         self.aktionen = []
         self.kommentare = []
     
@@ -388,21 +537,70 @@ class LeadDetailViewStatus:
         self.page.clean()
         self.page.padding = 0
         
+        # Markiere Lead als angesehen durch den aktuellen Benutzer
+        self.manager.mark_lead_as_viewed(self.lead.get('lead_id'), self.current_user['benutzer_id'])
+        
         # Aktualisierte Daten laden
         self.lead = self.manager.get_lead_by_id(self.lead.get('lead_id'))
         self.aktionen = self.manager.get_lead_aktionen(self.lead.get('lead_id'))
         self.kommentare = self.manager.get_lead_kommentare(self.lead.get('lead_id'))
         
-        # Header
-        header = ft.Container(
-            content=ft.Row([
+        # Prüfe ob Lead bereits vorgemerkt ist
+        is_marked = self.manager.is_lead_marked_for_deletion(self.lead.get('lead_id'))
+        
+        # Button zum Vormerken nur anzeigen wenn:
+        # 1. Lead noch offen ist (status_id = 1)
+        # 2. Benutzer der Erfasser ist
+        # 3. Lead noch nicht vorgemerkt ist
+        show_mark_button = (
+            self.lead.get('status_id') == 1 and 
+            self.lead.get('erfasser_id') == self.current_user['benutzer_id'] and 
+            not is_marked
+        )
+        
+        # Header mit Button
+        header_controls = [
+            ft.IconButton(
+                icon=ft.Icons.ARROW_BACK,
+                on_click=lambda e: self._go_back(),
+                tooltip="Zurück zur Liste"
+            ),
+            ft.Text(f"Lead #{self.lead.get('lead_id')}", size=24, weight=ft.FontWeight.BOLD),
+        ]
+        
+        # Füge Vormerken-Button hinzu, wenn Bedingungen erfüllt sind
+        if show_mark_button:
+            header_controls.append(ft.Container(expand=True))  # Spacer
+            header_controls.append(
                 ft.IconButton(
-                    icon=ft.Icons.ARROW_BACK,
-                    on_click=lambda e: self._go_back(),
-                    tooltip="Zurück zur Liste"
-                ),
-                ft.Text(f"Lead #{self.lead.get('lead_id')}", size=24, weight=ft.FontWeight.BOLD),
-            ], spacing=10),
+                    icon=ft.Icons.DELETE_OUTLINE,
+                    icon_color="#dc2626",
+                    tooltip="Zum Löschen vormerken",
+                    on_click=lambda e: self._mark_for_deletion(),
+                    bgcolor="#fee2e2",
+                    style=ft.ButtonStyle(
+                        shape=ft.RoundedRectangleBorder(radius=8),
+                    )
+                )
+            )
+        
+        # Zeige Info wenn bereits vorgemerkt
+        if is_marked:
+            header_controls.append(ft.Container(expand=True))  # Spacer
+            header_controls.append(
+                ft.Container(
+                    content=ft.Row([
+                        ft.Icon(ft.Icons.INFO_OUTLINE, color="#dc2626", size=20),
+                        ft.Text("Zum Löschen vorgemerkt", color="#dc2626", size=14, weight=ft.FontWeight.W_500)
+                    ], spacing=8),
+                    bgcolor="#fee2e2",
+                    padding=ft.padding.symmetric(horizontal=12, vertical=8),
+                    border_radius=8,
+                )
+            )
+        
+        header = ft.Container(
+            content=ft.Row(header_controls, spacing=10),
             padding=ft.padding.symmetric(horizontal=30, vertical=20),
         )
         
@@ -638,3 +836,53 @@ class LeadDetailViewStatus:
     def _go_back(self):
         """Zurück zur Lead-Status-Liste"""
         self.parent_view.render()
+    
+    def _mark_for_deletion(self):
+        """Markiert den Lead zum Löschen"""
+        def confirm_mark(e):
+            self.page.close(dialog)
+            # Lead zum Löschen vormerken
+            success, message = self.manager.mark_lead_for_deletion(
+                self.lead.get('lead_id'), 
+                self.current_user['benutzer_id'],
+                "Lead wurde durch Erfasser zum Löschen vorgemerkt"
+            )
+            
+            # Snackbar mit Ergebnis anzeigen
+            snackbar = ft.SnackBar(
+                content=ft.Text(message),
+                bgcolor="#10b981" if success else "#dc2626",
+            )
+            self.page.overlay.append(snackbar)
+            snackbar.open = True
+            self.page.update()
+            
+            # Wenn erfolgreich, Ansicht neu laden
+            if success:
+                self.render()
+        
+        def cancel_mark(e):
+            self.page.close(dialog)
+            self.page.update()
+        
+        # Bestätigungsdialog
+        dialog = ft.AlertDialog(
+            title=ft.Text("Lead zum Löschen vormerken?"),
+            content=ft.Text(
+                "Möchten Sie diesen Lead wirklich zum Löschen vormerken?\n\n"
+                "Der Lead wird für Administratoren als löschbar markiert und kann "
+                "von diesen endgültig gelöscht werden."
+            ),
+            actions=[
+                ft.TextButton("Abbrechen", on_click=cancel_mark),
+                ft.ElevatedButton(
+                    "Vormerken",
+                    bgcolor="#dc2626",
+                    color="white",
+                    on_click=confirm_mark
+                ),
+            ],
+        )
+        
+        self.page.open(dialog)
+        self.page.update()

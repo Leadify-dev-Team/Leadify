@@ -90,6 +90,10 @@ class AdminMenuView:
             padding=ft.padding.only(left=30, right=30, top=40, bottom=30),
         )
         
+        # Anzahl ermitteln für Badges
+        pending_leads_count = self._get_pending_leads_count()
+        pending_users_count = self._get_pending_users_count()
+        
         # Admin-Kacheln
         tiles_section = ft.Container(
             content=ft.Row([
@@ -100,7 +104,8 @@ class AdminMenuView:
                     color="#7f1d1d",
                     on_click=lambda e: self._navigate_to_delete_leads(),
                     bg_color=tile_bg,
-                    text_color=text_color
+                    text_color=text_color,
+                    badge_count=pending_leads_count
                 ),
                 self._create_tile(
                     icon=ft.Icons.PERSON_ADD_OUTLINED,
@@ -109,7 +114,8 @@ class AdminMenuView:
                     color="#713f12",
                     on_click=lambda e: self._navigate_to_benutzerfreigabe(),
                     bg_color=tile_bg,
-                    text_color=text_color
+                    text_color=text_color,
+                    badge_count=pending_users_count
                 ),
             ], spacing=20, wrap=True),
             padding=ft.padding.symmetric(horizontal=30),
@@ -124,18 +130,41 @@ class AdminMenuView:
         
         self.page.add(main_content)
     
-    def _create_tile(self, icon, title, description, color, on_click, bg_color, text_color):
-        """Erstellt eine Admin-Kachel"""
-        return ft.Container(
-            content=ft.Column([
-                ft.Container(
-                    content=ft.Icon(icon, color="white", size=32),
-                    bgcolor=color,
-                    width=64,
-                    height=64,
-                    border_radius=12,
+    def _create_tile(self, icon, title, description, color, on_click, bg_color, text_color, badge_count=0):
+        """Erstellt eine Admin-Kachel mit optionalem Badge"""
+        # Icon-Container mit Badge
+        icon_container = ft.Stack([
+            ft.Container(
+                content=ft.Icon(icon, color="white", size=32),
+                bgcolor=color,
+                width=64,
+                height=64,
+                border_radius=12,
+                alignment=ft.alignment.center,
+            ),
+            # Badge nur anzeigen wenn count > 0
+            ft.Container(
+                content=ft.Container(
+                    content=ft.Text(
+                        str(badge_count),
+                        size=11,
+                        color="white",
+                        weight=ft.FontWeight.BOLD,
+                    ),
+                    bgcolor="#ef4444",
+                    padding=ft.padding.symmetric(horizontal=6, vertical=2),
+                    border_radius=10,
                     alignment=ft.alignment.center,
                 ),
+                right=-5,
+                top=-5,
+                visible=badge_count > 0,
+            ),
+        ])
+        
+        return ft.Container(
+            content=ft.Column([
+                icon_container,
                 ft.Container(height=15),
                 ft.Text(
                     title,
@@ -285,6 +314,39 @@ class AdminMenuView:
         self.page.open(self.account_menu)
         self.page.update()
     
+    def _get_pending_leads_count(self):
+        """Ermittelt die Anzahl der zum Löschen vorgemerkten Leads"""
+        if self.app_controller and hasattr(self.app_controller, 'db'):
+            try:
+                sql = """
+                    SELECT COUNT(DISTINCT lead_id) as count 
+                    FROM lead_aktionen 
+                    WHERE aktion_typ = 'zum Löschen vorgemerkt'
+                """
+                result = self.app_controller.db.fetch_one(sql)
+                return result.get('count', 0) if result else 0
+            except Exception as e:
+                print(f"[ERROR] Fehler beim Zählen vorgemerkter Leads: {e}")
+                return 0
+        return 0
+    
+    def _get_pending_users_count(self):
+        """Ermittelt die Anzahl der ausstehenden Benutzer zur Freigabe"""
+        if self.app_controller and hasattr(self.app_controller, 'db'):
+            try:
+                sql = """
+                    SELECT COUNT(*) as count FROM benutzer 
+                    WHERE is_approved = 0 
+                    AND passwort_hash IS NOT NULL AND passwort_hash != '' 
+                    AND session_token IS NOT NULL AND session_token != ''
+                """
+                result = self.app_controller.db.fetch_one(sql)
+                return result.get('count', 0) if result else 0
+            except Exception as e:
+                print(f"[ERROR] Fehler beim Zählen ausstehender Nutzer: {e}")
+                return 0
+        return 0
+    
     def _navigate_to_delete_leads(self):
         """Navigiert zur Lead-Löschung"""
         if self.app_controller:
@@ -418,15 +480,19 @@ class AdminMenuView:
             except Exception as e:
                 print(f"[ERROR] Fehler beim Zählen ausstehender Nutzer: {e}")
         
-        # Zähle Leads zum Löschen (Status 4, 6, 7)
+        # Zähle Leads zum Löschen (vorgemerkt durch Mitarbeiter)
         if self.app_controller and hasattr(self.app_controller, 'db'):
             try:
-                sql = "SELECT COUNT(*) as count FROM lead WHERE status_id IN (4, 6, 7)"
+                sql = """
+                    SELECT COUNT(DISTINCT lead_id) as count 
+                    FROM lead_aktionen 
+                    WHERE aktion_typ = 'zum Löschen vorgemerkt'
+                """
                 result = self.app_controller.db.fetch_one(sql)
                 if result:
                     count += result.get('count', 0)
             except Exception as e:
-                print(f"[ERROR] Fehler beim Zählen ausstehender Leads: {e}")
+                print(f"[ERROR] Fehler beim Zählen vorgemerkter Leads: {e}")
         
         return count
     
@@ -509,16 +575,21 @@ class AdminMenuView:
                 print(f"[ERROR] Fehler beim Zählen ausstehender Nutzer: {e}")
                 pending_users = 0
         
-        # Zähle Leads zum Löschen
+        # Zähle Leads zum Löschen (vorgemerkt durch Mitarbeiter)
         pending_leads = 0
         if self.app_controller and hasattr(self.app_controller, 'db'):
             try:
-                sql = "SELECT COUNT(*) as count FROM lead WHERE status_id IN (4, 6, 7)"
+                sql = """
+                    SELECT COUNT(DISTINCT lead_id) as count 
+                    FROM lead_aktionen 
+                    WHERE aktion_typ = 'zum Löschen vorgemerkt'
+                """
                 result = self.app_controller.db.fetch_one(sql)
                 if result:
                     pending_leads = result.get('count', 0)
-            except:
-                pass
+            except Exception as e:
+                print(f"[ERROR] Fehler beim Zählen vorgemerkter Leads: {e}")
+                pending_leads = 0
         
         notifications = []
         
@@ -547,8 +618,8 @@ class AdminMenuView:
                     content=ft.Row([
                         ft.Icon(ft.Icons.DELETE_OUTLINE, size=24, color="#ef4444"),
                         ft.Column([
-                            ft.Text(f"{pending_leads} Leads zum Löschen", size=14, color=text_color, weight=ft.FontWeight.W_600),
-                            ft.Text("Leads sind zum Löschen vorgemerkt", size=12, color=text_secondary),
+                            ft.Text(f"{pending_leads} Leads zum Löschen vorgemerkt", size=14, color=text_color, weight=ft.FontWeight.W_600),
+                            ft.Text("Mitarbeiter haben Leads zum Löschen vorgemerkt", size=12, color=text_secondary),
                         ], spacing=2, expand=True),
                     ], spacing=15),
                     padding=15,
