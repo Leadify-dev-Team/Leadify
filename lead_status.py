@@ -117,6 +117,15 @@ class LeadStatusManager:
         """
         return self.db.fetch_all(sql, (lead_id,))
     
+    def update_kommentar(self, kommentar_id: int, new_text: str):
+        """Aktualisiert den Text eines existierenden Kommentars"""
+        sql = """
+            UPDATE kommentar
+            SET text = ?, Datum = NOW()
+            WHERE kommentar_id = ?
+        """
+        return self.db.query(sql, (new_text, kommentar_id))
+    
     def has_recent_action(self, lead_id: int, erfasser_id: int = None):
         """Prüft ob ein Lead innerhalb der letzten 24 Stunden eine (ungesehene) Aktion erhalten hat"""
         if erfasser_id:
@@ -797,6 +806,12 @@ class LeadDetailViewStatus:
     
     def _build_kommentar_section(self):
         """Kommentare"""
+        # Prüfe ob User der Erfasser ist und Lead offen ist
+        can_edit = (
+            self.lead.get('erfasser_id') == self.current_user['benutzer_id'] and
+            self.lead.get('status_id') == 1
+        )
+        
         if not self.kommentare:
             content = ft.Text("Keine Kommentare vorhanden", size=14, color="#64748b", italic=True)
         else:
@@ -809,12 +824,23 @@ class LeadDetailViewStatus:
                 else:
                     datum_str = str(datum)
                 
+                # Container-Inhalt mit optionalem Edit-Button
+                kommentar_content = ft.Column([
+                    ft.Row([
+                        ft.Text(datum_str, size=12, color="#64748b"),
+                        ft.IconButton(
+                            icon=ft.Icons.EDIT,
+                            icon_size=16,
+                            tooltip="Kommentar bearbeiten",
+                            on_click=lambda e, k=kommentar: self._edit_kommentar(k),
+                        ) if can_edit else ft.Container(),
+                    ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                    ft.Text(kommentar.get('text', ''), size=14),
+                ], spacing=5)
+                
                 kommentar_items.append(
                     ft.Container(
-                        content=ft.Column([
-                            ft.Text(datum_str, size=12, color="#64748b"),
-                            ft.Text(kommentar.get('text', ''), size=14),
-                        ], spacing=5),
+                        content=kommentar_content,
                         padding=15,
                         border_radius=8,
                         border=ft.border.all(1, ft.Colors.OUTLINE),
@@ -836,6 +862,70 @@ class LeadDetailViewStatus:
     def _go_back(self):
         """Zurück zur Lead-Status-Liste"""
         self.parent_view.render()
+    
+    def _edit_kommentar(self, kommentar):
+        """Öffnet einen Dialog zum Bearbeiten eines Kommentars"""
+        # TextField für neuen Kommentartext
+        kommentar_field = ft.TextField(
+            label="Kommentar",
+            value=kommentar.get('text', ''),
+            multiline=True,
+            min_lines=3,
+            max_lines=5,
+            autofocus=True,
+        )
+        
+        def save_edit(e):
+            new_text = kommentar_field.value.strip()
+            if not new_text:
+                # Zeige Fehler, wenn leer
+                snackbar = ft.SnackBar(
+                    content=ft.Text("Kommentar darf nicht leer sein"),
+                    bgcolor="#dc2626",
+                )
+                self.page.overlay.append(snackbar)
+                snackbar.open = True
+                self.page.update()
+                return
+            
+            # Kommentar aktualisieren
+            self.manager.update_kommentar(kommentar.get('kommentar_id'), new_text)
+            
+            self.page.close(dialog)
+            
+            # Snackbar mit Erfolg anzeigen
+            snackbar = ft.SnackBar(
+                content=ft.Text("Kommentar erfolgreich aktualisiert"),
+                bgcolor="#10b981",
+            )
+            self.page.overlay.append(snackbar)
+            snackbar.open = True
+            self.page.update()
+            
+            # Ansicht neu laden
+            self.render()
+        
+        def cancel_edit(e):
+            self.page.close(dialog)
+            self.page.update()
+        
+        # Dialog
+        dialog = ft.AlertDialog(
+            title=ft.Text("Kommentar bearbeiten"),
+            content=kommentar_field,
+            actions=[
+                ft.TextButton("Abbrechen", on_click=cancel_edit),
+                ft.ElevatedButton(
+                    "Speichern",
+                    bgcolor="#10b981",
+                    color="white",
+                    on_click=save_edit
+                ),
+            ],
+        )
+        
+        self.page.open(dialog)
+        self.page.update()
     
     def _mark_for_deletion(self):
         """Markiert den Lead zum Löschen"""

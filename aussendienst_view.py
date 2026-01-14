@@ -359,9 +359,9 @@ class AussendienstView:
                 width=400
             )
         
-        # Produkt SearchField erstellen (nur beim ersten Mal)
+        # Produkt Dropdown erstellen (nur beim ersten Mal)
         if self.produkt_dropdown is None:
-            self.produkt_dropdown = SearchField(
+            self.produkt_dropdown = ft.Dropdown(
                 label="Produkt auswählen *",
                 options=[],
                 width=400
@@ -390,7 +390,7 @@ class AussendienstView:
                 ft.Divider(height=20, color="transparent"),
                 self.produktgruppe_dropdown,
                 ft.Divider(height=10, color="transparent"),
-                self.produkt_dropdown.container,
+                self.produkt_dropdown,
                 ft.Divider(height=10, color="transparent"),
                 self.zustand_dropdown,
                 ft.Divider(height=10, color="transparent"),
@@ -635,19 +635,36 @@ class AussendienstView:
             print(f"[DEBUG] Erste Produkte: {produkte[:3] if produkte else 'KEINE'}")
             
             if produkte:
+                # Filtere Produkte basierend auf der Produktgruppe
+                # Stapler (angenommen ID 1) -> nur Produkt-IDs 1-4
+                # Industriegeräte (angenommen ID 2) -> nur Produkt-IDs 5-8
+                filtered_produkte = produkte
+                
+                # Prüfe ob es Stapler oder Industriegeräte sind
+                if selected_option:
+                    if "Stapler" in selected_option.text:
+                        # Nur Produkte mit IDs 1-4
+                        filtered_produkte = [p for p in produkte if 1 <= p['produkt_id'] <= 4]
+                        print(f"[DEBUG] Stapler ausgewählt - gefiltert auf IDs 1-4: {len(filtered_produkte)} Produkte")
+                    elif "Industriegeräte" in selected_option.text or "Industrieger" in selected_option.text:
+                        # Nur Produkte mit IDs 5-8
+                        filtered_produkte = [p for p in produkte if 5 <= p['produkt_id'] <= 8]
+                        print(f"[DEBUG] Industriegeräte ausgewählt - gefiltert auf IDs 5-8: {len(filtered_produkte)} Produkte")
+                
                 self.produkt_dropdown.options = [
-                    {'key': str(p['produkt_id']), 'text': p['produkt']}
-                    for p in produkte
+                    ft.dropdown.Option(key=str(p['produkt_id']), text=p['produkt'])
+                    for p in filtered_produkte
                 ]
+                self.produkt_dropdown.value = None  # Zurücksetzen der Auswahl
                 self.produkt_dropdown.error_text = None
             else:
                 self.produkt_dropdown.options = []
+                self.produkt_dropdown.value = None
                 self.produkt_dropdown.error_text = "Keine Produkte gefunden"
         except Exception as e:
             print(f"[DEBUG] FEHLER beim Laden von Produkten: {e}")
             self.produkt_dropdown.error_text = f"Fehler: {str(e)}"
         
-        self.produkt_dropdown.container.update()
         self.page.update()
     
     def _save_lead(self):
@@ -772,7 +789,36 @@ class AussendienstView:
     def _after_save_success(self, dialog):
         """Nach erfolgreichem Speichern: Dialog schließen und zurück zum Menü"""
         self.page.close(dialog)
+        self._reset_form()  # Formular zurücksetzen vor Rückkehr zum Menü
         self._go_back_to_menu()
+    
+    def _reset_form(self):
+        """Setzt alle Formularfelder und Variablen zurück"""
+        print("[DEBUG] Formular wird zurückgesetzt...")
+        
+        # Schritt zurücksetzen
+        self.current_step = 1
+        
+        # Ausgewählte Werte zurücksetzen
+        self.selected_firma = None
+        self.selected_ansprechpartner = None
+        self.selected_produktgruppe = None
+        self.selected_produkt = None
+        self.selected_zustand = None
+        self.selected_quelle = None
+        self.selected_bearbeiter = None
+        
+        # UI-Komponenten zurücksetzen (auf None setzen, damit sie beim nächsten render() neu erstellt werden)
+        self.firma_dropdown = None
+        self.ansprechpartner_dropdown = None
+        self.produktgruppe_dropdown = None
+        self.produkt_dropdown = None
+        self.zustand_dropdown = None
+        self.quelle_dropdown = None
+        self.bearbeiter_dropdown = None
+        self.beschreibung_field = None
+        
+        print("[DEBUG] Formular erfolgreich zurückgesetzt")
     
     def _go_back_to_menu(self):
         """Kehrt zum Hauptmenü zurück"""
