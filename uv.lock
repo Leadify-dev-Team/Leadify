@@ -455,8 +455,8 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "bcrypt", specifier = ">=5.0.0" },
-    { name = "flet", extras = ["all"], specifier = ">=0.28.3" },
-    { name = "mariadb", specifier = ">=1.1.13" },
+    { name = "flet", extras = ["all"], specifier = ">=0.80.5" },
+    { name = "mariadb", specifier = ">=1.1.14" },
     { name = "openpyxl", specifier = ">=3.1.5" },
     { name = "uvicorn", specifier = ">=0.40.0" },
     { name = "websockets", specifier = ">=16.0" },
