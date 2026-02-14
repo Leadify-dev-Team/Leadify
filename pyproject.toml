@@ -5,10 +5,15 @@ description = "Lead Management App zur systematischen Generierung und Bearbeitun
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "bcrypt>=5.0.0",
     "flet[all]>=0.80.5",
-    "mariadb>=1.1.14",
     "openpyxl>=3.1.5",
+    "python-dotenv>=1.2.1",
     "uvicorn>=0.40.0",
     "websockets>=16.0",
+]
+
+[project.optional-dependencies]
+server = [
+    "mariadb>=1.1.14",
+    "bcrypt>=5.0.0", 
 ]
