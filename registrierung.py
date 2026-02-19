@@ -147,22 +147,22 @@ class AppController:
                     width=24,
                     height=24,
                     border_radius=12,
-                    alignment=ft.alignment.center,
+                    alignment=ft.Alignment(0, 0),
                     visible=anzahl_neue_leads > 0
                 ),
-                on_click=lambda e: self._show_leads()
+                on_click=self._show_leads
             ),
 
             ft.ListTile(
                 leading=ft.Icon(ft.Icons.ASSIGNMENT),
                 title=ft.Text("Gesendete Leads"),
-                on_click=lambda e: self._show_lead_status()
+                on_click=self._show_lead_status
             ),
 
             ft.ListTile(
                 leading=ft.Icon(ft.Icons.ADD_CIRCLE),
                 title=ft.Text("Lead erstellen"),
-                on_click=lambda e: self._show_create_lead()
+                on_click=self._show_create_lead
             ),
             
         ]
@@ -174,7 +174,7 @@ class AppController:
                 ft.ListTile(
                     leading=ft.Icon(ft.Icons.ANALYTICS),
                     title=ft.Text("Auswertung"),
-                    on_click=lambda e: self._show_auswertung()
+                    on_click=self._show_auswertung
                 ),
             ])
         
@@ -182,9 +182,9 @@ class AppController:
             ft.Divider(),
         ])
         
-        menu_drawer = ft.NavigationDrawer(controls=menu_controls)
-        
-        self.page.drawer = menu_drawer
+        self.menu_drawer = ft.NavigationDrawer(controls=menu_controls)
+        self.page.drawer = self.menu_drawer
+        self.page.update()
         
         # Profil-Drawer (rechts) mit Abmelden und Passwort ändern
         # Theme-Switch basierend auf aktuellem Modus
@@ -211,7 +211,7 @@ class AppController:
             ft.ListTile(
                 leading=ft.Icon(ft.Icons.LOCK),
                 title=ft.Text("Passwort ändern"),
-                on_click=lambda e: self._show_change_password()
+                on_click=self._show_change_password
             ),
             ft.Divider(),
             ft.ListTile(
@@ -223,6 +223,7 @@ class AppController:
         
         profile_drawer = ft.NavigationDrawer(controls=profile_controls)
         self.page.end_drawer = profile_drawer
+        self.page.update()
         
         # Willkommensbildschirm
         username = self.current_user.get('vorname') or self.current_user.get('email')
@@ -235,13 +236,13 @@ class AppController:
                         ft.IconButton(
                             icon=ft.Icons.MENU,
                             icon_size=30,
-                            on_click=lambda e: self._toggle_drawer()
+                            on_click=self._toggle_drawer
                         ),
                         ft.Text("Leadify", size=24, weight=ft.FontWeight.BOLD, expand=True),
                         ft.IconButton(
                             icon=ft.Icons.ACCOUNT_CIRCLE,
                             icon_size=30,
-                            on_click=lambda e: self._toggle_profile_drawer(),
+                            on_click=self._toggle_profile_drawer,
                             tooltip="Profil"
                         )
                     ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
@@ -268,20 +269,17 @@ class AppController:
             )
         )
     
-    def _toggle_drawer(self):
-        """Öffnet/Schließt das Hamburger-Menü"""
-        self.page.drawer.open = not self.page.drawer.open
-        self.page.update()
+    async def _toggle_drawer(self, e=None):
+        """Öffnet das Hamburger-Menü"""
+        await self.page.show_drawer()
     
-    def _toggle_profile_drawer(self):
-        """Öffnet/Schließt das Profil-Menü"""
-        self.page.end_drawer.open = not self.page.end_drawer.open
-        self.page.update()
+    async def _toggle_profile_drawer(self, e=None):
+        """Öffnet das Profil-Menü"""
+        await self.page.show_end_drawer()
     
-    def _show_change_password(self):
+    async def _show_change_password(self, e=None):
         """Zeigt Dialog zum Ändern des Passworts"""
-        self.page.end_drawer.open = False
-        self.page.update()
+        await self.page.close_end_drawer()
         
         # Eingabefelder
         old_password_field = ft.TextField(
@@ -307,7 +305,7 @@ class AppController:
         
         status_text = ft.Text("", color="red", size=12)
         
-        def change_password_clicked(e):
+        async def change_password_clicked(e):
             # Validierung
             if not old_password_field.value or not new_password_field.value or not confirm_password_field.value:
                 status_text.value = "Bitte fülle alle Felder aus"
@@ -335,18 +333,18 @@ class AppController:
             )
             
             if success:
-                self.page.close(password_dialog)
+                self.page.pop_dialog()
                 
-                def logout_after_success(e):
-                    self.page.close(success_dialog)
-                    self._handle_logout(e)
+                async def logout_after_success(e):
+                    self.page.pop_dialog()
+                    await self._handle_logout(None)
                 
                 success_dialog = ft.AlertDialog(
                     title=ft.Text("Erfolg", color=ft.Colors.GREEN),
                     content=ft.Text("Passwort wurde erfolgreich geändert! Du wirst jetzt abgemeldet."),
                     actions=[ft.TextButton("OK", on_click=logout_after_success)]
                 )
-                self.page.open(success_dialog)
+                self.page.show_dialog(success_dialog)
             else:
                 status_text.value = message
                 status_text.color = "red"
@@ -364,12 +362,12 @@ class AppController:
                 width=350
             ),
             actions=[
-                ft.TextButton("Abbrechen", on_click=lambda e: self.page.close(password_dialog)),
+                ft.TextButton("Abbrechen", on_click=lambda e: self.page.pop_dialog()),
                 ft.ElevatedButton("Passwort ändern", on_click=change_password_clicked)
             ]
         )
         
-        self.page.open(password_dialog)
+        self.page.show_dialog(password_dialog)
     
     def _create_quick_access_buttons(self):
         """Erstellt Schnellzugriff-Buttons basierend auf Benutzerrolle"""
@@ -403,7 +401,7 @@ class AppController:
                     width=28,
                     height=28,
                     border_radius=14,
-                    alignment=ft.alignment.center,
+                    alignment=ft.Alignment(0, 0),
                     right=10,
                     top=10,
                 )
@@ -414,7 +412,7 @@ class AppController:
                 content=nachrichten_content,
                 width=300,
                 height=120,
-                on_click=lambda e: self._show_leads()
+                on_click=self._show_leads
             ),
             ft.ElevatedButton(
                 content=ft.Column([
@@ -424,7 +422,7 @@ class AppController:
                 ], spacing=5, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
                 width=300,
                 height=120,
-                on_click=lambda e: self._show_create_lead()
+                on_click=self._show_create_lead
             ),
             ft.ElevatedButton(
                 content=ft.Column([
@@ -434,7 +432,7 @@ class AppController:
                 ], spacing=5, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
                 width=300,
                 height=120,
-                on_click=lambda e: self._show_lead_status()
+                on_click=self._show_lead_status
             ),
         ]
         
@@ -449,7 +447,7 @@ class AppController:
                     ], spacing=5, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
                     width=300,
                     height=120,
-                    on_click=lambda e: self._show_auswertung(),
+                    on_click=self._show_auswertung,
                     bgcolor="#3b82f6",
                     color="white",
                 )
@@ -457,10 +455,9 @@ class AppController:
         
         return ft.Column(buttons, spacing=15, horizontal_alignment=ft.CrossAxisAlignment.CENTER)
     
-    def _show_leads(self):
+    async def _show_leads(self, e=None):
         """Zeigt die Lead-Bearbeitung UI"""
-        self.page.drawer.open = False
-        self.page.update()
+        await self.page.close_drawer()
         
         self.page.clean()
         
@@ -480,10 +477,9 @@ class AppController:
         self.lead_bearbeitung_view.render()
     
     # ========== NEU: Außendienst-Methode (ersetzt Placeholder) ==========
-    def _show_create_lead(self):
+    async def _show_create_lead(self, e=None):
         """Zeigt Außendienst-Ansicht für Lead-Erstellung"""
-        self.page.drawer.open = False
-        self.page.update()
+        await self.page.close_drawer()
         
         self.page.clean()
         
@@ -507,10 +503,9 @@ class AppController:
     # ====================================================================
     
     # ========== NEU: Lead-Status-Methode ==========
-    def _show_lead_status(self):
+    async def _show_lead_status(self, e=None):
         """Zeigt Status aller von diesem Benutzer erstellten Leads"""
-        self.page.drawer.open = False
-        self.page.update()
+        await self.page.close_drawer()
         
         self.page.clean()
         
@@ -700,17 +695,17 @@ class AppController:
             horizontal_alignment=ft.CrossAxisAlignment.CENTER)
         )
 
-    def _handle_logout(self, e):
+    async def _handle_logout(self, e):
         """Private Methode für Logout-Logik"""
-        # Hamburger-Menü schließen
-        if self.page.drawer:
-            self.page.drawer.open = False
-            self.page.update()
+        # Hamburger-Menü schließen falls geöffnet
+        if hasattr(self, 'menu_drawer'):
+            await self.page.close_drawer()
         
-        # Profil-Drawer schließen
-        if self.page.end_drawer:
-            self.page.end_drawer.open = False
-            self.page.update()
+        # Profil-Drawer schließen falls geöffnet
+        try:
+            await self.page.close_end_drawer()
+        except:
+            pass
         
         # Logout durchführen
         self.auth.logout()
@@ -748,7 +743,7 @@ class AppController:
     # ====================================
     
     # ========== Auswertungs-Methoden ==========
-    def _show_auswertung(self):
+    async def _show_auswertung(self, e=None):
         """Zeigt die Auswertungs-Ansicht (nur für rolle_id = 4)"""
         # Rollenüberprüfung
         if self.current_user.get('rolle_id') != 4:
@@ -756,9 +751,8 @@ class AppController:
             return
         
         # Drawer schließen falls vorhanden
-        if self.page.drawer:
-            self.page.drawer.open = False
-            self.page.update()
+        if hasattr(self, 'menu_drawer'):
+            await self.page.close_drawer()
         
         self.page.clean()
         
@@ -781,7 +775,7 @@ class AppController:
     def _show_access_denied(self, feature_name):
         """Zeigt Zugriff-verweigert Dialog"""
         def close_dialog(e):
-            self.page.close(dialog)
+            self.page.pop_dialog()
         
         dialog = ft.AlertDialog(
             title=ft.Text("Zugriff verweigert"),
@@ -790,7 +784,7 @@ class AppController:
                 ft.TextButton("OK", on_click=close_dialog)
             ],
         )
-        self.page.open(dialog)
+        self.page.show_dialog(dialog)
     
     def show_auswertung_menu(self):
         """Zeigt das Auswertungs-Menü für rolle_id = 4 Benutzer"""
@@ -821,7 +815,7 @@ class AppController:
             ft.ListTile(
                 leading=ft.Icon(ft.Icons.LOCK),
                 title=ft.Text("Passwort ändern"),
-                on_click=lambda e: self._show_change_password()
+                on_click=self._show_change_password
             ),
             ft.Divider(),
             ft.ListTile(
@@ -833,6 +827,7 @@ class AppController:
         
         profile_drawer = ft.NavigationDrawer(controls=profile_controls)
         self.page.end_drawer = profile_drawer
+        self.page.update()
         
         # Header mit Profil-Icon
         header = ft.Container(
@@ -845,7 +840,7 @@ class AppController:
                 ft.IconButton(
                     icon=ft.Icons.ACCOUNT_CIRCLE,
                     icon_size=28,
-                    on_click=lambda e: self._toggle_profile_drawer(),
+                    on_click=self._toggle_profile_drawer,
                     tooltip="Profil"
                 ),
             ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
@@ -885,7 +880,7 @@ class AppController:
                         width=80,
                         height=80,
                         border_radius=12,
-                        alignment=ft.alignment.center,
+                        alignment=ft.Alignment(0, 0),
                     ),
                     ft.Container(height=20),
                     ft.Text(
@@ -905,12 +900,12 @@ class AppController:
                 border_radius=12,
                 width=350,
                 height=250,
-                on_click=lambda e: self._show_auswertung(),
+                on_click=self._show_auswertung,
                 ink=True,
                 border=ft.border.all(1, ft.Colors.OUTLINE),
             ),
             padding=ft.padding.symmetric(horizontal=30),
-            alignment=ft.alignment.center,
+            alignment=ft.Alignment(0, 0),
         )
         
         # Hauptcontainer

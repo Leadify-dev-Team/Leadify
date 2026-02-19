@@ -6,7 +6,9 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "bcrypt>=5.0.0",
-    "flet[all]>=0.28.3",
-    "mariadb>=1.1.13",
+    "flet[all]>=0.80.5",
+    "mariadb>=1.1.14",
     "openpyxl>=3.1.5",
+    "uvicorn>=0.40.0",
+    "websockets>=16.0",
 ]

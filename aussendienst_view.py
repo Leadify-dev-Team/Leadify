@@ -75,8 +75,6 @@ class SearchField:
                     self.suggestions_list.controls.append(btn)
                 
                 self.suggestions_list.visible = len(self.filtered_options) > 0
-        
-        self.container.update()
     
     def _create_selection_handler(self, key: str, text: str):
         """Erstellt einen Click-Handler für eine Option"""
@@ -94,8 +92,6 @@ class SearchField:
         
         if self.on_select:
             self.on_select(key)
-        
-        self.container.update()
     
     @property
     def value(self):
@@ -110,7 +106,6 @@ class SearchField:
     @error_text.setter
     def error_text(self, value):
         self.text_field.error_text = value
-        self.container.update()
 
 class AussendienstView:
     """Hauptansicht für Außendienst: Lead erstellen"""
@@ -348,14 +343,14 @@ class AussendienstView:
         if self.produktgruppe_dropdown is None:
             produktgruppen = self.manager.get_produktgruppen()
             produktgruppe_options = [
-                ft.dropdown.Option(key=str(pg['produkt_id']), text=pg['produkt'])
+                ft.DropdownOption(key=str(pg['produkt_id']), text=pg['produkt'])
                 for pg in produktgruppen
             ]
             
             self.produktgruppe_dropdown = ft.Dropdown(
                 label="Produktgruppe auswählen *",
                 options=produktgruppe_options,
-                on_change=lambda e: self._on_produktgruppe_selected(e.control.value),
+                on_select=lambda e: self._on_produktgruppe_selected(e.control.value),
                 width=400
             )
         
@@ -371,7 +366,7 @@ class AussendienstView:
         if self.zustand_dropdown is None:
             zustaende = self.manager.get_produktzustaende()
             zustand_options = [
-                ft.dropdown.Option(key=str(z['id']), text=z['zustand'])
+                ft.DropdownOption(key=str(z['id']), text=z['zustand'])
                 for z in zustaende
                 if z['id'] != 3  # ID 3 ist für Serviceleistungen reserviert (NULL-Wert)
             ]
@@ -409,7 +404,7 @@ class AussendienstView:
         if self.quelle_dropdown is None:
             quellen = self.manager.get_quellen()
             quelle_options = [
-                ft.dropdown.Option(key=str(q['id']), text=q['quelle'])
+                ft.DropdownOption(key=str(q['id']), text=q['quelle'])
                 for q in quellen
             ]
             
@@ -423,7 +418,7 @@ class AussendienstView:
         if self.bearbeiter_dropdown is None:
             bearbeiter = self.manager.get_verfuegbare_bearbeiter()
             bearbeiter_options = [
-                ft.dropdown.Option(key=str(b['benutzer_id']), text=b['name'])
+                ft.DropdownOption(key=str(b['benutzer_id']), text=b['name'])
                 for b in bearbeiter
             ]
             
@@ -576,7 +571,7 @@ class AussendienstView:
             if ansprechpartner:
                 # Dropdown-Optionen füllen
                 self.ansprechpartner_dropdown.options = [
-                    ft.dropdown.Option(
+                    ft.DropdownOption(
                         key=str(ap['id']),
                         text=f"{ap['anrede']} {ap['vorname']} {ap['nachname']} ({ap['position']})"
                     )
@@ -652,7 +647,7 @@ class AussendienstView:
                         print(f"[DEBUG] Industriegeräte ausgewählt - gefiltert auf IDs 5-8: {len(filtered_produkte)} Produkte")
                 
                 self.produkt_dropdown.options = [
-                    ft.dropdown.Option(key=str(p['produkt_id']), text=p['produkt'])
+                    ft.DropdownOption(key=str(p['produkt_id']), text=p['produkt'])
                     for p in filtered_produkte
                 ]
                 self.produkt_dropdown.value = None  # Zurücksetzen der Auswahl
@@ -731,9 +726,9 @@ class AussendienstView:
                         ft.Text("Bitte fülle alle Pflichtfelder aus:", weight=ft.FontWeight.BOLD),
                         *[ft.Text(f"• {error}", size=12) for error in errors]
                     ], tight=True),
-                    actions=[ft.TextButton("OK", on_click=lambda e: self.page.close(error_dialog))]
+                    actions=[ft.TextButton("OK", on_click=lambda e: self.page.pop_dialog())]
                 )
-                self.page.open(error_dialog)
+                self.page.show_dialog(error_dialog)
                 return
             
             print("[DEBUG] Validierung erfolgreich - starte Lead-Erstellung")
@@ -769,7 +764,7 @@ class AussendienstView:
                         ft.TextButton("OK", on_click=lambda e: self._after_save_success(success_dialog))
                     ]
                 )
-                self.page.open(success_dialog)
+                self.page.show_dialog(success_dialog)
             else:
                 raise Exception("Lead konnte nicht erstellt werden")
         
@@ -782,13 +777,13 @@ class AussendienstView:
             error_dialog = ft.AlertDialog(
                 title=ft.Text("Fehler", color=ft.Colors.RED),
                 content=ft.Text(f"Fehler beim Speichern: {str(ex)}"),
-                actions=[ft.TextButton("OK", on_click=lambda e: self.page.close(error_dialog))]
+                actions=[ft.TextButton("OK", on_click=lambda e: self.page.pop_dialog())]
             )
-            self.page.open(error_dialog)
+            self.page.show_dialog(error_dialog)
     
     def _after_save_success(self, dialog):
         """Nach erfolgreichem Speichern: Dialog schließen und zurück zum Menü"""
-        self.page.close(dialog)
+        self.page.pop_dialog()
         self._reset_form()  # Formular zurücksetzen vor Rückkehr zum Menü
         self._go_back_to_menu()
     

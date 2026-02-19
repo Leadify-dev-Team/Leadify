@@ -373,7 +373,7 @@ class LeadBearbeitungView:
     def _build_filter_dropdown(self):
         """Erstellt ein Dropdown-Menü für Status-Filter"""
         def on_filter_change(e):
-            selected_value = filter_dropdown.value
+            selected_value = e.data
 
             
             # Wenn "Alle anzeigen" ausgewählt, alle aktivieren
@@ -390,12 +390,12 @@ class LeadBearbeitungView:
         
         # Filter-Optionen
         filter_options = [
-            ft.dropdown.Option("all", "Alle anzeigen"),
-            ft.dropdown.Option("1", "Offen"),
-            ft.dropdown.Option("2", "In Bearbeitung"),
-            ft.dropdown.Option("4", "Abgelehnt"),
-            ft.dropdown.Option("5", "Angebot erstellt"),
-            ft.dropdown.Option("3", "Erledigt")
+            ft.DropdownOption("all", "Alle anzeigen"),
+            ft.DropdownOption("1", "Offen"),
+            ft.DropdownOption("2", "In Bearbeitung"),
+            ft.DropdownOption("4", "Abgelehnt"),
+            ft.DropdownOption("5", "Angebot erstellt"),
+            ft.DropdownOption("3", "Erledigt")
         ]
         
         # Bestimme den aktuellen Dropdown-Wert basierend auf active_filters
@@ -411,7 +411,7 @@ class LeadBearbeitungView:
             label="Filter nach Status",
             options=filter_options,
             value=current_value,
-            on_change=on_filter_change,
+            on_select=on_filter_change,
             width=250
         )
         
@@ -746,8 +746,8 @@ class LeadDetailView:
         """Lead annehmen - Menü mit Optionen anzeigen"""
         def on_accept_with_comment(e):
             """Öffnet Dialog für "Mit Kommentar annehmen" Option"""
-            self.page.close(dialog)
-            
+            dialog.open = False
+            self.page.update()
             def submit_accept_comment(e):
                 kommentar = kommentar_field.value or ""
                 if not kommentar:
@@ -762,7 +762,8 @@ class LeadDetailView:
                     kommentar
                 )
                 if success:
-                    self.page.close(comment_dialog)
+                    comment_dialog.open = False
+                    self.page.update()
                     self.render()
             
             kommentar_field = ft.TextField(
@@ -781,21 +782,26 @@ class LeadDetailView:
                     error_text
                 ], spacing=5, tight=True),
                 actions=[
-                    ft.TextButton("Abbrechen", on_click=lambda e: self.page.close(comment_dialog)),
+                    ft.TextButton("Abbrechen", on_click=lambda e: (setattr(comment_dialog, "open", False), self.page.update())),
                     ft.TextButton("Annehmen", on_click=submit_accept_comment)
                 ]
             )
             
-            self.page.open(comment_dialog)
-        
+            comment_dialog.open = True
+            
+            self.page.overlay.append(comment_dialog)
+            
+            self.page.update()
         def on_besuchsbericht(e):
             """Öffnet Dialog für "Besuchsbericht erstellen" Option"""
-            self.page.close(dialog)
+            dialog.open = False
+            self.page.update()
             self._show_besuchsbericht_dialog()
         
         def on_angebot(e):
             """Öffnet Dialog für "Angebot erstellen" Option"""
-            self.page.close(dialog)
+            dialog.open = False
+            self.page.update()
             self._show_angebot_dialog()
         
         def on_option_click(option_type):
@@ -843,12 +849,15 @@ class LeadDetailView:
                 )
             ], spacing=10, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
             actions=[
-                ft.TextButton("Abbrechen", on_click=lambda e: self.page.close(dialog))
+                ft.TextButton("Abbrechen", on_click=lambda e: (setattr(dialog, "open", False), self.page.update()))
             ]
         )
         
-        self.page.open(dialog)
-    
+        dialog.open = True
+        
+        self.page.overlay.append(dialog)
+        
+        self.page.update()
     def _handle_reject(self):
         """Lead ablehnen - mit Kommentar"""
         def submit_reject(e):
@@ -859,7 +868,8 @@ class LeadDetailView:
                 kommentar
             )
             if success:
-                self.page.close(dialog)
+                dialog.open = False
+                self.page.update()
                 self.render()
         
         kommentar_field = ft.TextField(label="Grund für Ablehnung", multiline=True)
@@ -868,13 +878,16 @@ class LeadDetailView:
             title=ft.Text("Lead ablehnen"),
             content=kommentar_field,
             actions=[
-                ft.TextButton("Abbrechen", on_click=lambda e: self.page.close(dialog)),
+                ft.TextButton("Abbrechen", on_click=lambda e: (setattr(dialog, "open", False), self.page.update())),
                 ft.TextButton("Ablehnen", on_click=submit_reject)
             ]
         )
         
-        self.page.open(dialog)
-    
+        dialog.open = True
+        
+        self.page.overlay.append(dialog)
+        
+        self.page.update()
     def _handle_complete(self):
         """Lead als erledigt markieren - mit Kommentar"""
         def submit_complete(e):
@@ -895,7 +908,8 @@ class LeadDetailView:
                     self.lead.lead_id,
                     kommentar
                 )
-                self.page.close(dialog)
+                dialog.open = False
+                self.page.update()
                 self.render()
         
         kommentar_field = ft.TextField(
@@ -914,13 +928,16 @@ class LeadDetailView:
                 error_text
             ], spacing=5, tight=True),
             actions=[
-                ft.TextButton("Abbrechen", on_click=lambda e: self.page.close(dialog)),
+                ft.TextButton("Abbrechen", on_click=lambda e: (setattr(dialog, "open", False), self.page.update())),
                 ft.TextButton("Erledigt", on_click=submit_complete)
             ]
         )
         
-        self.page.open(dialog)
-    
+        dialog.open = True
+        
+        self.page.overlay.append(dialog)
+        
+        self.page.update()
     def _handle_forward(self):
         """Lead weiterleiten - Bearbeiter auswählen mit Live-Suchfunktion"""
         bearbeiter = self.lead_manager.get_verfuegbare_bearbeiter()
@@ -933,9 +950,11 @@ class LeadDetailView:
             error_dialog = ft.AlertDialog(
                 title=ft.Text("Keine Bearbeiter verfügbar"),
                 content=ft.Text("Es sind keine anderen Innendienst-Mitarbeiter verfügbar."),
-                actions=[ft.TextButton("OK", on_click=lambda e: self.page.close(error_dialog))]
+                actions=[ft.TextButton("OK", on_click=lambda e: (setattr(error_dialog, "open", False), self.page.update()))]
             )
-            self.page.open(error_dialog)
+            error_dialog.open = True
+            self.page.overlay.append(error_dialog)
+            self.page.update()
             return
         
         # State für Suchfunktion
@@ -1008,7 +1027,8 @@ class LeadDetailView:
                     kommentar_field.value
                 )
                 if success:
-                    self.page.close(dialog)
+                    dialog.open = False
+                    self.page.update()
                     self._go_back()  # Zurück zur Liste
             elif not selected_bearbeiter["id"]:
                 error_text.value = "Bitte wählen Sie einen Bearbeiter aus der Vorschlagsliste."
@@ -1036,13 +1056,16 @@ class LeadDetailView:
                 error_text
             ], tight=True, spacing=5),
             actions=[
-                ft.TextButton("Abbrechen", on_click=lambda e: self.page.close(dialog)),
+                ft.TextButton("Abbrechen", on_click=lambda e: (setattr(dialog, "open", False), self.page.update())),
                 ft.TextButton("Weiterleiten", on_click=submit_forward)
             ]
         )
         
-        self.page.open(dialog)
-    
+        dialog.open = True
+        
+        self.page.overlay.append(dialog)
+        
+        self.page.update()
     # ---- Hilfsfunktionen ----
     
     def _show_besuchsbericht_dialog(self):
@@ -1059,7 +1082,8 @@ class LeadDetailView:
                     self.lead.lead_id,
                     "Besuchsbericht angelegt"
                 )
-                self.page.close(dialog)
+                dialog.open = False
+                self.page.update()
                 self.render()
         
         # Kundeninfos Section
@@ -1102,13 +1126,16 @@ class LeadDetailView:
                        size=11, color="grey", italic=True)
             ], spacing=10, scroll=ft.ScrollMode.AUTO),
             actions=[
-                ft.TextButton("Abbrechen", on_click=lambda e: self.page.close(dialog)),
+                ft.TextButton("Abbrechen", on_click=lambda e: (setattr(dialog, "open", False), self.page.update())),
                 ft.TextButton("Besuchsbericht erstellen", on_click=submit_besuchsbericht)
             ]
         )
         
-        self.page.open(dialog)
-    
+        dialog.open = True
+        
+        self.page.overlay.append(dialog)
+        
+        self.page.update()
     def _show_angebot_dialog(self):
         """Zeigt Angebot-Dialog mit Kundendaten und Lead-Daten (Bedarfsinformation)"""
         def submit_angebot(e):
@@ -1130,7 +1157,8 @@ class LeadDetailView:
                     self.lead.lead_id,
                     "Angebot erstellt"
                 )
-                self.page.close(dialog)
+                dialog.open = False
+                self.page.update()
                 self.render()
         
         # Kundeninfos Section
@@ -1173,13 +1201,16 @@ class LeadDetailView:
                        size=11, color="grey", italic=True)
             ], spacing=10, scroll=ft.ScrollMode.AUTO),
             actions=[
-                ft.TextButton("Abbrechen", on_click=lambda e: self.page.close(dialog)),
+                ft.TextButton("Abbrechen", on_click=lambda e: (setattr(dialog, "open", False), self.page.update())),
                 ft.TextButton("Angebot erstellen", on_click=submit_angebot)
             ]
         )
         
-        self.page.open(dialog)
-    
+        dialog.open = True
+        
+        self.page.overlay.append(dialog)
+        
+        self.page.update()
     def _get_aktion_icon(self, aktion_typ: str):
         """Gibt passendes Icon für Aktion zurück"""
         icons = {

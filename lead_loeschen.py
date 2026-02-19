@@ -32,7 +32,7 @@ class LeadLoeschenView:
         tile_bg = "#1e293b" if dark_mode else "#ffffff"
         border_color = "#334155" if dark_mode else "#e2e8f0"
         
-        self.page.bgcolor = bg_color
+        self.page.bgcolor = None
         
         # Leads aus Datenbank laden
         self._load_leads()
@@ -70,12 +70,12 @@ class LeadLoeschenView:
                     label="Filter nach Status",
                     value=self.current_filter,
                     options=[
-                        ft.dropdown.Option("all", "Alle anzeigen"),
-                        ft.dropdown.Option("abgelehnt", "Abgelehnt"),
-                        ft.dropdown.Option("vorgemerkt", "vorgemerkt zum Löschen"),
+                        ft.DropdownOption(key="all", text="Alle anzeigen"),
+                        ft.DropdownOption(key="abgelehnt", text="Abgelehnt"),
+                        ft.DropdownOption(key="vorgemerkt", text="vorgemerkt zum Löschen"),
                     ],
                     width=250,
-                    on_change=self._on_filter_change,
+                    on_select=self._on_filter_change,
                     bgcolor=tile_bg,
                     border_color=border_color,
                     color=text_color,
@@ -107,12 +107,12 @@ class LeadLoeschenView:
                     label="Filter nach Status",
                     value=self.current_filter,
                     options=[
-                        ft.dropdown.Option("all", "Alle anzeigen"),
-                        ft.dropdown.Option("abgelehnt", "Abgelehnt"),
-                        ft.dropdown.Option("vorgemerkt", "Vorgemerkt zum Löschen"),
+                        ft.DropdownOption(key="all", text="Alle anzeigen"),
+                        ft.DropdownOption(key="abgelehnt", text="Abgelehnt"),
+                        ft.DropdownOption(key="vorgemerkt", text="Vorgemerkt zum Löschen"),
                     ],
                     width=250,
-                    on_change=self._on_filter_change,
+                    on_select=self._on_filter_change,
                     bgcolor=tile_bg,
                     border_color=border_color,
                     color=text_color,
@@ -216,7 +216,7 @@ class LeadLoeschenView:
                         ft.Text("Ändere die Filter-Einstellungen", size=14, color=text_tertiary),
                     ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=10),
                     padding=40,
-                    alignment=ft.alignment.center,
+                    alignment=ft.Alignment(0, 0),
                 )
             )
         else:
@@ -401,7 +401,7 @@ class LeadLoeschenView:
                     self.db.query(sql_lead, (lead_id,))
                     deleted_count += 1
                 
-                self.page.close(dialog)
+                self.page.pop_dialog()
                 self.selected_leads.clear()
                 self._load_leads()
                 self.render()
@@ -418,7 +418,7 @@ class LeadLoeschenView:
                 snack_bar.open = True
                 self.page.update()
             except Exception as ex:
-                self.page.close(dialog)
+                self.page.pop_dialog()
                 # Fehler-Snackbar
                 snack_bar = ft.SnackBar(
                     content=ft.Text(
@@ -432,7 +432,7 @@ class LeadLoeschenView:
                 self.page.update()
         
         def cancel_delete(e):
-            self.page.close(dialog)
+            self.page.pop_dialog()
             self.page.update()
         
         # Bestätigungsdialog mit Warnung
@@ -470,7 +470,7 @@ class LeadLoeschenView:
             ],
         )
         
-        self.page.open(dialog)
+        self.page.show_dialog(dialog)
     
     def _go_back(self):
         """Zurück zum Admin-Menü"""

@@ -4,7 +4,7 @@ from registrierung import main as app_main
 
 def main():
     #Entry point - launches the Flet app from registrierung.py
-    ft.app(target=app_main)
+    ft.run(app_main)
 
 
 if __name__ == "__main__":

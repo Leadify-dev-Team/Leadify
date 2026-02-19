@@ -293,26 +293,26 @@ class AuswertungView:
         self.erfasser_dropdown = ft.Dropdown(
             label="Nach Erfasser filtern",
             width=250,
-            options=[ft.dropdown.Option(key="all", text="Alle Erfasser")] +
-                    [ft.dropdown.Option(key=str(e['benutzer_id']), text=e['name']) 
+            options=[ft.DropdownOption(key="all", text="Alle Erfasser")] +
+                    [ft.DropdownOption(key=str(e['benutzer_id']), text=e['name']) 
                      for e in erfasser_list],
             value="all",
-            on_change=lambda e: self._filter_by_erfasser(e.control.value),
+            on_select=lambda e: self._filter_by_erfasser(e.control.value),
         )
         
         self.status_dropdown = ft.Dropdown(
             label="Nach Status filtern",
             width=250,
             options=[
-                ft.dropdown.Option(key="all", text="Alle Anzeigen"),
-                ft.dropdown.Option(key="1", text="Offen"),
-                ft.dropdown.Option(key="2", text="In Bearbeitung"),
-                ft.dropdown.Option(key="3", text="Erledigt"),
-                ft.dropdown.Option(key="4", text="Abgelehnt"),
-                ft.dropdown.Option(key="5", text="Angebot erstellt"),
+                ft.DropdownOption(key="all", text="Alle Anzeigen"),
+                ft.DropdownOption(key="1", text="Offen"),
+                ft.DropdownOption(key="2", text="In Bearbeitung"),
+                ft.DropdownOption(key="3", text="Erledigt"),
+                ft.DropdownOption(key="4", text="Abgelehnt"),
+                ft.DropdownOption(key="5", text="Angebot erstellt"),
             ],
             value="all",
-            on_change=lambda e: self._filter_by_status(e.control.value),
+            on_select=lambda e: self._filter_by_status(e.control.value),
         )
         
         self.search_field = ft.TextField(
@@ -746,7 +746,7 @@ class AuswertungView:
     def _show_message(self, title, message, success=False):
         """Zeigt eine Benachrichtigung an"""
         def close_dialog(e):
-            self.page.close(dialog)
+            self.page.pop_dialog()
         
         dialog = ft.AlertDialog(
             title=ft.Text(title),
@@ -755,7 +755,7 @@ class AuswertungView:
                 ft.TextButton("OK", on_click=close_dialog)
             ],
         )
-        self.page.open(dialog)
+        self.page.show_dialog(dialog)
     
     def _go_back(self):
         """Zurück zum Hauptmenü"""

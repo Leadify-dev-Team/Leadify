@@ -364,12 +364,12 @@ class LeadStatusView:
         
         # Filter-Optionen
         filter_options = [
-            ft.dropdown.Option("1", "Offen"),
-            ft.dropdown.Option("2", "In Bearbeitung"),
-            ft.dropdown.Option("4", "Abgelehnt"),
-            ft.dropdown.Option("5", "Angebot erstellt"),
-            ft.dropdown.Option("3", "Erledigt"),
-            ft.dropdown.Option("all", "Alle anzeigen")
+            ft.DropdownOption("1", "Offen"),
+            ft.DropdownOption("2", "In Bearbeitung"),
+            ft.DropdownOption("4", "Abgelehnt"),
+            ft.DropdownOption("5", "Angebot erstellt"),
+            ft.DropdownOption("3", "Erledigt"),
+            ft.DropdownOption("all", "Alle anzeigen")
         ]
         
         # Bestimme den aktuellen Dropdown-Wert basierend auf active_filters
@@ -385,7 +385,7 @@ class LeadStatusView:
             label="Filter nach Status",
             options=filter_options,
             value=current_value,
-            on_change=on_filter_change,
+            on_select=on_filter_change,
             width=250
         )
         
@@ -891,7 +891,7 @@ class LeadDetailViewStatus:
             # Kommentar aktualisieren
             self.manager.update_kommentar(kommentar.get('kommentar_id'), new_text)
             
-            self.page.close(dialog)
+            self.page.pop_dialog()
             
             # Snackbar mit Erfolg anzeigen
             snackbar = ft.SnackBar(
@@ -906,7 +906,7 @@ class LeadDetailViewStatus:
             self.render()
         
         def cancel_edit(e):
-            self.page.close(dialog)
+            self.page.pop_dialog()
             self.page.update()
         
         # Dialog
@@ -924,13 +924,13 @@ class LeadDetailViewStatus:
             ],
         )
         
-        self.page.open(dialog)
+        self.page.show_dialog(dialog)
         self.page.update()
     
     def _mark_for_deletion(self):
         """Markiert den Lead zum Löschen"""
         def confirm_mark(e):
-            self.page.close(dialog)
+            self.page.pop_dialog()
             # Lead zum Löschen vormerken
             success, message = self.manager.mark_lead_for_deletion(
                 self.lead.get('lead_id'), 
@@ -952,7 +952,7 @@ class LeadDetailViewStatus:
                 self.render()
         
         def cancel_mark(e):
-            self.page.close(dialog)
+            self.page.pop_dialog()
             self.page.update()
         
         # Bestätigungsdialog
@@ -974,5 +974,5 @@ class LeadDetailViewStatus:
             ],
         )
         
-        self.page.open(dialog)
+        self.page.show_dialog(dialog)
         self.page.update()

@@ -29,7 +29,7 @@ class AdminMenuView:
         text_secondary = "#94a3b8" if self.dark_mode else "#64748b"
         tile_bg = "#1e293b" if self.dark_mode else "#ffffff"
         
-        self.page.bgcolor = bg_color
+        self.page.bgcolor = None
         
         # Header mit Account-Button
         header = ft.Container(
@@ -39,7 +39,7 @@ class AdminMenuView:
                         icon=ft.Icons.MENU,
                         icon_color=text_color,
                         icon_size=24,
-                        on_click=lambda e: self._show_drawer()
+                        on_click=self._show_drawer
                     ),
                     ft.Text("Leadify", size=20, color=text_color, weight=ft.FontWeight.BOLD),
                     ft.Container(width=20),
@@ -52,7 +52,7 @@ class AdminMenuView:
                             icon=ft.Icons.ACCOUNT_CIRCLE,
                             icon_color="white",
                             icon_size=24,
-                            on_click=lambda e: self._show_account_menu(e)
+                            on_click=self._show_account_menu
                         ),
                         bgcolor="#3b82f6",
                         border_radius=20,
@@ -140,7 +140,7 @@ class AdminMenuView:
                 width=64,
                 height=64,
                 border_radius=12,
-                alignment=ft.alignment.center,
+                alignment=ft.Alignment(0, 0),
             ),
             # Badge nur anzeigen wenn count > 0
             ft.Container(
@@ -154,7 +154,7 @@ class AdminMenuView:
                     bgcolor="#ef4444",
                     padding=ft.padding.symmetric(horizontal=6, vertical=2),
                     border_radius=10,
-                    alignment=ft.alignment.center,
+                    alignment=ft.Alignment(0, 0),
                 ),
                 right=-5,
                 top=-5,
@@ -196,7 +196,7 @@ class AdminMenuView:
             ) if not self.dark_mode else None,
         )
     
-    def _show_account_menu(self, e):
+    async def _show_account_menu(self, e=None):
         """Zeigt das Account-Menü als Drawer rechts"""
         # Synchronisiere Dark Mode mit page.theme_mode
         self.dark_mode = self.page.theme_mode == ft.ThemeMode.DARK
@@ -209,8 +209,8 @@ class AdminMenuView:
         icon_color = "#94a3b8" if self.dark_mode else "#475569"
         divider_color = "#334155" if self.dark_mode else "#e2e8f0"
         
-        def close_drawer(e):
-            self.page.close(self.account_menu)
+        async def close_drawer(e):
+            await self.page.close_end_drawer()
             self.page.update()
         
         def toggle_dark_mode(e):
@@ -237,7 +237,6 @@ class AdminMenuView:
         
         # Account-Menü als Drawer rechts
         self.account_menu = ft.NavigationDrawer(
-            position=ft.NavigationDrawerPosition.END,  # Rechts öffnen
             controls=[
                 # Header mit Benutzerdaten
                 ft.Container(
@@ -249,7 +248,7 @@ class AdminMenuView:
                                 height=60,
                                 bgcolor="#e2e8f0" if not self.dark_mode else "#334155",
                                 border_radius=30,
-                                alignment=ft.alignment.center,
+                                alignment=ft.Alignment(0, 0),
                             ),
                             ft.Column([
                                 ft.Text(
@@ -311,7 +310,8 @@ class AdminMenuView:
             bgcolor=bg_color,
         )
         
-        self.page.open(self.account_menu)
+        self.page.end_drawer = self.account_menu
+        await self.page.show_end_drawer()
         self.page.update()
     
     def _get_pending_leads_count(self):
@@ -360,7 +360,7 @@ class AdminMenuView:
     def _show_placeholder(self, feature_name):
         """Zeigt Placeholder für noch nicht implementierte Features"""
         def close_dialog(e):
-            self.page.close(dialog)
+            self.page.pop_dialog()
             self.page.update()
         
         dialog = ft.AlertDialog(
@@ -370,10 +370,10 @@ class AdminMenuView:
                 ft.TextButton("OK", on_click=close_dialog)
             ],
         )
-        self.page.open(dialog)
+        self.page.show_dialog(dialog)
         self.page.update()
     
-    def _show_drawer(self):
+    async def _show_drawer(self, e=None):
         """Zeigt Navigation Drawer mit den Admin-Aktionen"""
         # Synchronisiere Dark Mode mit page.theme_mode
         self.dark_mode = self.page.theme_mode == ft.ThemeMode.DARK
@@ -386,8 +386,8 @@ class AdminMenuView:
         icon_color = "#94a3b8" if self.dark_mode else "#475569"
         divider_color = "#334155" if self.dark_mode else "#e2e8f0"
         
-        def close_drawer(e):
-            self.page.close(drawer)
+        async def close_drawer(e):
+            await self.page.close_drawer()
             self.page.update()
         
         def navigate_delete_leads(e):
@@ -400,7 +400,6 @@ class AdminMenuView:
         
         # Navigation Drawer erstellen
         drawer = ft.NavigationDrawer(
-            position=ft.NavigationDrawerPosition.START,  # Links öffnen
             controls=[
                 # Header
                 ft.Container(
@@ -450,7 +449,8 @@ class AdminMenuView:
             bgcolor=bg_color,
         )
         
-        self.page.open(drawer)
+        self.page.drawer = drawer
+        await self.page.show_drawer()
         self.page.update()
     
     def _logout(self):
@@ -512,7 +512,7 @@ class AdminMenuView:
             width=20,
             height=20,
             border_radius=10,
-            alignment=ft.alignment.center,
+            alignment=ft.Alignment(0, 0),
             visible=self.notification_count > 0,
         )
         
@@ -523,7 +523,7 @@ class AdminMenuView:
                 icon=ft.Icons.EMAIL_OUTLINED,
                 icon_color=text_color,
                 icon_size=20,
-                on_click=lambda e: self._show_notification_menu(e),
+                on_click=self._show_notification_menu,
             ),
             ft.Container(
                 content=badge,
@@ -532,7 +532,7 @@ class AdminMenuView:
             ),
         ])
     
-    def _show_notification_menu(self, e):
+    async def _show_notification_menu(self, e=None):
         """Zeigt das Benachrichtigungs-Menü"""
         # Synchronisiere Dark Mode mit page.theme_mode
         self.dark_mode = self.page.theme_mode == ft.ThemeMode.DARK
@@ -546,8 +546,8 @@ class AdminMenuView:
         divider_color = "#334155" if self.dark_mode else "#e2e8f0"
         tile_bg = "#1e293b" if self.dark_mode else "#f1f5f9"
         
-        def close_menu(e):
-            self.page.close(notification_menu)
+        async def close_menu(e):
+            await self.page.close_end_drawer()
             self.page.update()
         
         def navigate_benutzerfreigabe(e):
@@ -639,13 +639,12 @@ class AdminMenuView:
                         ft.Text("Alles ist auf dem neuesten Stand", size=13, color=text_secondary),
                     ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=10),
                     padding=30,
-                    alignment=ft.alignment.center,
+                    alignment=ft.Alignment(0, 0),
                 )
             )
         
         # Benachrichtigungs-Menü als Drawer rechts
         notification_menu = ft.NavigationDrawer(
-            position=ft.NavigationDrawerPosition.END,
             controls=[
                 # Header
                 ft.Container(
@@ -677,5 +676,6 @@ class AdminMenuView:
             bgcolor=bg_color,
         )
         
-        self.page.open(notification_menu)
+        self.page.end_drawer = notification_menu
+        await self.page.show_end_drawer()
         self.page.update()

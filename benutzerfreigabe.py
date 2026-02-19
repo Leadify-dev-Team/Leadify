@@ -27,7 +27,7 @@ class BenutzerfreigabeView:
         table_bg = "#1e293b" if self.dark_mode else "#ffffff"
         row_hover = "#2d3748" if self.dark_mode else "#f8fafc"
         
-        self.page.bgcolor = bg_color
+        self.page.bgcolor = None
         
         # Header
         header = ft.Container(
@@ -151,7 +151,7 @@ class BenutzerfreigabeView:
                     ),
                 ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=10),
                 padding=ft.padding.all(60),
-                alignment=ft.alignment.center,
+                alignment=ft.Alignment(0, 0),
                 bgcolor=table_bg,
                 border_radius=12,
             )
@@ -174,7 +174,7 @@ class BenutzerfreigabeView:
                 ft.Container(
                     content=ft.Text("AKTION", size=12, color=text_color, weight=ft.FontWeight.W_600),
                     expand=True,
-                    alignment=ft.alignment.center_right,
+                    alignment=ft.Alignment(1, 0),
                 ),
             ], spacing=20),
             padding=ft.padding.symmetric(horizontal=25, vertical=15),
@@ -299,7 +299,7 @@ class BenutzerfreigabeView:
     def _reject_user(self, user_id):
         """Zeigt Bestätigungsdialog und löscht den Benutzer bei Bestätigung"""
         def confirm_reject(e):
-            self.page.close(dialog)
+            self.page.pop_dialog()
             try:
                 sql = "DELETE FROM benutzer WHERE benutzer_id = ?"
                 self.db.query(sql, (user_id,))
@@ -327,7 +327,7 @@ class BenutzerfreigabeView:
                 self.page.update()
         
         def cancel_reject(e):
-            self.page.close(dialog)
+            self.page.pop_dialog()
         
         dialog = ft.AlertDialog(
             modal=True,
@@ -344,7 +344,7 @@ class BenutzerfreigabeView:
             ],
         )
         
-        self.page.open(dialog)
+        self.page.show_dialog(dialog)
         self.page.update()
     
     def _navigate_back(self):
