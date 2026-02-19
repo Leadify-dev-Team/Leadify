@@ -1,7 +1,6 @@
 import mariadb
 import sys
 
-
 class Database:
     _instance = None  # Singleton, um nur eine Verbindung zu haben (Wichtig bei Modularisierung)
 
@@ -18,7 +17,7 @@ class Database:
                 self.user = user
                 self.password = password
                 self.database = database
-                self.port = port
+                self.port = int(port)
 
                 # Verbindung aufbauen
                 self.conn = mariadb.connect(

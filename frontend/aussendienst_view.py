@@ -174,7 +174,7 @@ class AussendienstView:
                         ft.Divider(height=20, color="transparent"),
                         nav_buttons
                     ], scroll=ft.ScrollMode.AUTO, expand=True),
-                    padding=20,
+                    padding=ft.Padding.symmetric(horizontal=10, vertical=20),
                     expand=True
                 )
             )
@@ -242,20 +242,10 @@ class AussendienstView:
     
     def _build_navigation_buttons(self):
         """Erstellt die Navigations-Buttons"""
-        buttons = []
-        
-        # Zurück-Button (außer bei Schritt 1)
-        if self.current_step > 1:
-            buttons.append(
-                ft.OutlinedButton(
-                    "Zurück",
-                    icon=ft.Icons.ARROW_BACK,
-                    on_click=lambda e: self._previous_step()
-                )
-            )
+        main_buttons = []
         
         # Abbrechen-Button
-        buttons.append(
+        main_buttons.append(
             ft.OutlinedButton(
                 "Abbrechen",
                 icon=ft.Icons.CANCEL,
@@ -265,8 +255,8 @@ class AussendienstView:
         
         # Weiter/Speichern-Button
         if self.current_step < self.total_steps:
-            buttons.append(
-                ft.ElevatedButton(
+            main_buttons.append(
+                ft.Button(
                     "Weiter",
                     icon=ft.Icons.ARROW_FORWARD,
                     on_click=lambda e: self._next_step(),
@@ -275,20 +265,42 @@ class AussendienstView:
                 )
             )
         else:
-            buttons.append(
-                ft.ElevatedButton(
-                    "Lead speichern",
+            main_buttons.append(
+                ft.Button(
+                    "Speichern",
                     icon=ft.Icons.SAVE,
                     on_click=lambda e: self._save_lead(),
                     bgcolor=ft.Colors.GREEN,
-                    color=ft.Colors.WHITE
+                    color=ft.Colors.WHITE,
                 )
             )
         
-        return ft.Row(
-            buttons,
+        # Erste Zeile: Abbrechen und Weiter/Speichern
+        main_row = ft.Row(
+            main_buttons,
             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-            spacing=10
+            spacing=5
+        )
+        
+        # Zweite Zeile: Zurück-Button (nur bei Schritt > 1)
+        navigation_controls = [main_row]
+        
+        if self.current_step > 1:
+            back_button = ft.OutlinedButton(
+                "Zurück",
+                icon=ft.Icons.ARROW_BACK,
+                on_click=lambda e: self._previous_step()
+            )
+            navigation_controls.append(
+                ft.Container(
+                    content=back_button,
+                    margin=ft.margin.only(top=10)
+                )
+            )
+        
+        return ft.Column(
+            navigation_controls,
+            spacing=0
         )
     
     def _build_step_1_kundendaten(self):
@@ -331,7 +343,7 @@ class AussendienstView:
                 ft.Text("* Pflichtfelder", size=12, color="grey", italic=True)
             ], spacing=10),
             padding=20,
-            border=ft.border.all(1, ft.Colors.GREY_300),
+            border=ft.Border.all(1, ft.Colors.GREY_300),
             border_radius=10
         )
     
@@ -392,7 +404,7 @@ class AussendienstView:
                 ft.Text("* Pflichtfelder", size=12, color="grey", italic=True)
             ], spacing=10),
             padding=20,
-            border=ft.border.all(1, ft.Colors.GREY_300),
+            border=ft.Border.all(1, ft.Colors.GREY_300),
             border_radius=10
         )
     
@@ -441,7 +453,7 @@ class AussendienstView:
                 ft.Text("* Pflichtfelder", size=12, color="grey", italic=True)
             ], spacing=10),
             padding=20,
-            border=ft.border.all(1, ft.Colors.GREY_300),
+            border=ft.Border.all(1, ft.Colors.GREY_300),
             border_radius=10
         )
     
@@ -470,7 +482,7 @@ class AussendienstView:
                 ft.Text("Dieses Feld ist optional", size=12, color="grey", italic=True)
             ], spacing=10),
             padding=20,
-            border=ft.border.all(1, ft.Colors.GREY_300),
+            border=ft.Border.all(1, ft.Colors.GREY_300),
             border_radius=10
         )
     

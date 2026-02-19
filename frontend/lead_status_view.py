@@ -1,265 +1,6 @@
 import flet as ft
 from datetime import datetime
-from database import Database
-
-
-# ============================================================================
-# MODEL-KLASSE (Daten-Objekt)
-# ============================================================================
-
-class Lead:
-    """Repräsentiert einen Lead mit allen Details"""
-    
-    def __init__(self, data: dict):
-        """Erstellt Lead-Objekt aus Datenbank-Dictionary"""
-        self.lead_id = data.get('lead_id')
-        self.datum_erfasst = data.get('datum_erfasst')
-        self.status_id = data.get('status_id')
-        self.bearbeiter_id = data.get('bearbeiter_id')
-        self.erfasser_id = data.get('erfasser_id')
-        
-        # Zusätzliche Infos (aus JOINs)
-        self.kunde_name = data.get('kunde_name', 'Unbekannt')
-        self.produkt_name = data.get('produkt_name', 'Unbekannt')
-        self.status_name = data.get('status_name', 'Offen')
-        self.bearbeiter_name = data.get('bearbeiter_name', 'Nicht zugewiesen')
-    
-    def __str__(self):
-        return f"Lead #{self.lead_id} - {self.kunde_name} ({self.status_name})"
-
-
-# ============================================================================
-# MANAGER-KLASSE (Business-Logik / Datenbankoperationen)
-# ============================================================================
-
-class LeadStatusManager:
-    """Verwaltet alle Operationen für die Lead-Status-Ansicht"""
-    
-    def __init__(self, db: Database):
-        self.db = db
-    
-    def get_my_created_leads(self, erfasser_id: int):
-        """Gibt alle Leads zurück, die dieser Benutzer erfasst hat"""
-        sql = """
-            SELECT 
-                l.*,
-                f.name as kunde_name,
-                p.produkt as produkt_name,
-                s.status as status_name,
-                CONCAT(b.vorname, ' ', b.nachname) as bearbeiter_name
-            FROM lead l
-            LEFT JOIN ansprechpartner ap ON l.ansprechpartner_id = ap.id
-            LEFT JOIN firma f ON ap.firma_id = f.id
-            LEFT JOIN produkte p ON l.produkt_id = p.produkt_id
-            LEFT JOIN status s ON l.status_id = s.id
-            LEFT JOIN benutzer b ON l.bearbeiter_id = b.benutzer_id
-            WHERE l.erfasser_id = ?
-            ORDER BY l.datum_erfasst DESC
-        """
-        results = self.db.fetch_all(sql, (erfasser_id,))
-        return [Lead(row) for row in results] if results else []
-    
-    def get_lead_by_id(self, lead_id: int):
-        """Gibt einen einzelnen Lead mit allen Details zurück"""
-        sql = """
-            SELECT 
-                l.*,
-                CONCAT(b_erfasser.vorname, ' ', b_erfasser.nachname) as erfasser_name,
-                CONCAT(b_bearbeiter.vorname, ' ', b_bearbeiter.nachname) as bearbeiter_name,
-                f.name as kunde_name,
-                CONCAT(ap.vorname, ' ', ap.nachname) as ansprechpartner_name,
-                ap.email as kunde_email,
-                ap.telefon as kunde_telefon,
-                pos.bezeichnung as ansprechpartner_position,
-                p.produkt as produkt_name,
-                pg.produkt as produktgruppe_name,
-                s.status as status_name,
-                pz.zustand as produktzustand_name,
-                q.quelle as quelle_name
-            FROM lead l
-            LEFT JOIN benutzer b_erfasser ON l.erfasser_id = b_erfasser.benutzer_id
-            LEFT JOIN benutzer b_bearbeiter ON l.bearbeiter_id = b_bearbeiter.benutzer_id
-            LEFT JOIN ansprechpartner ap ON l.ansprechpartner_id = ap.id
-            LEFT JOIN firma f ON ap.firma_id = f.id
-            LEFT JOIN position pos ON ap.position_id = pos.id
-            LEFT JOIN produkte p ON l.produkt_id = p.produkt_id
-            LEFT JOIN produktgruppe pg ON l.produktgruppe_id = pg.produkt_id
-            LEFT JOIN status s ON l.status_id = s.id
-            LEFT JOIN produktzustand pz ON l.produktzustand_id = pz.id
-            LEFT JOIN quelle q ON l.quelle_id = q.id_quelle
-            WHERE l.lead_id = ?
-        """
-        return self.db.fetch_one(sql, (lead_id,))
-    
-    def get_lead_aktionen(self, lead_id: int):
-        """Gibt alle Aktionen zu einem Lead zurück (Verlauf)"""
-        sql = """
-            SELECT 
-                a.*,
-                CONCAT(b.vorname, ' ', b.nachname) as benutzer_name,
-                CONCAT(z.vorname, ' ', z.nachname) as ziel_name
-            FROM lead_aktionen a
-            LEFT JOIN benutzer b ON a.benutzer_id = b.benutzer_id
-            LEFT JOIN benutzer z ON a.ziel_benutzer_id = z.benutzer_id
-            WHERE a.lead_id = ?
-            AND a.aktion_typ != 'lead_angesehen'
-            ORDER BY a.zeitstempel DESC
-        """
-        return self.db.fetch_all(sql, (lead_id,))
-    
-    def get_lead_kommentare(self, lead_id: int):
-        """Gibt alle Kommentare zu einem Lead zurück"""
-        sql = """
-            SELECT *
-            FROM kommentar
-            WHERE lead_id = ?
-            ORDER BY Datum ASC
-        """
-        return self.db.fetch_all(sql, (lead_id,))
-    
-    def update_kommentar(self, kommentar_id: int, new_text: str):
-        """Aktualisiert den Text eines existierenden Kommentars"""
-        sql = """
-            UPDATE kommentar
-            SET text = ?, Datum = NOW()
-            WHERE kommentar_id = ?
-        """
-        return self.db.query(sql, (new_text, kommentar_id))
-    
-    def has_recent_action(self, lead_id: int, erfasser_id: int = None):
-        """Prüft ob ein Lead innerhalb der letzten 24 Stunden eine (ungesehene) Aktion erhalten hat"""
-        if erfasser_id:
-            # Hole Zeitstempel der letzten "lead_angesehen" Aktion für diesen Benutzer
-            sql_last_viewed = """
-                SELECT MAX(zeitstempel) as last_viewed
-                FROM lead_aktionen
-                WHERE lead_id = ?
-                AND benutzer_id = ?
-                AND aktion_typ = 'lead_angesehen'
-            """
-            viewed_result = self.db.fetch_one(sql_last_viewed, (lead_id, erfasser_id))
-            last_viewed = viewed_result.get('last_viewed') if viewed_result else None
-            
-            # Prüfe ob es Aktionen gibt, die nach dem letzten Ansehen passiert sind
-            if last_viewed:
-                sql = """
-                    SELECT COUNT(*) as count
-                    FROM lead_aktionen
-                    WHERE lead_id = ?
-                    AND zeitstempel > ?
-                    AND zeitstempel >= NOW() - INTERVAL 24 HOUR
-                    AND aktion_typ NOT IN ('zum Löschen vorgemerkt', 'lead_angesehen')
-                """
-                result = self.db.fetch_one(sql, (lead_id, last_viewed))
-            else:
-                # Wenn noch nie angesehen, zeige alle Aktionen der letzten 24h
-                sql = """
-                    SELECT COUNT(*) as count
-                    FROM lead_aktionen
-                    WHERE lead_id = ?
-                    AND zeitstempel >= NOW() - INTERVAL 24 HOUR
-                    AND aktion_typ NOT IN ('zum Löschen vorgemerkt', 'lead_angesehen')
-                """
-                result = self.db.fetch_one(sql, (lead_id,))
-        else:
-            # Fallback ohne Erfasser-Prüfung
-            sql = """
-                SELECT COUNT(*) as count
-                FROM lead_aktionen
-                WHERE lead_id = ?
-                AND zeitstempel >= NOW() - INTERVAL 24 HOUR
-                AND aktion_typ NOT IN ('zum Löschen vorgemerkt', 'lead_angesehen')
-            """
-            result = self.db.fetch_one(sql, (lead_id,))
-        return result['count'] > 0 if result else False
-    
-    def mark_lead_as_viewed(self, lead_id: int, benutzer_id: int):
-        """Markiert einen Lead als angesehen durch den Erfasser"""
-        # Lösche vorherige "lead_angesehen" Einträge dieses Benutzers für diesen Lead
-        sql_delete = """
-            DELETE FROM lead_aktionen 
-            WHERE lead_id = ? 
-            AND benutzer_id = ? 
-            AND aktion_typ = 'lead_angesehen'
-        """
-        self.db.query(sql_delete, (lead_id, benutzer_id))
-        
-        # Füge neuen "lead_angesehen" Eintrag hinzu
-        sql_insert = """
-            INSERT INTO lead_aktionen (lead_id, benutzer_id, aktion_typ, kommentar)
-            VALUES (?, ?, 'lead_angesehen', NULL)
-        """
-        self.db.query(sql_insert, (lead_id, benutzer_id))
-    
-    def get_last_action_type(self, lead_id: int):
-        """Gibt den Typ der letzten Aktion für einen Lead zurück"""
-        sql = """
-            SELECT aktion_typ
-            FROM lead_aktionen
-            WHERE lead_id = ?
-            ORDER BY zeitstempel DESC
-            LIMIT 1
-        """
-        result = self.db.fetch_one(sql, (lead_id,))
-        return result['aktion_typ'] if result else None
-    
-    def mark_lead_for_deletion(self, lead_id: int, benutzer_id: int, kommentar: str = None):
-        """Markiert einen Lead zum Löschen (nur für Erfasser und nur offene Leads)"""
-        # Prüfe ob Lead dem Benutzer gehört und Status = Offen ist
-        sql_check = """
-            SELECT erfasser_id, status_id
-            FROM lead
-            WHERE lead_id = ?
-        """
-        lead_data = self.db.fetch_one(sql_check, (lead_id,))
-        
-        if not lead_data:
-            return False, "Lead nicht gefunden"
-        
-        if lead_data['erfasser_id'] != benutzer_id:
-            return False, "Sie können nur Ihre eigenen Leads vormerken"
-        
-        if lead_data['status_id'] != 1:  # 1 = Offen
-            return False, "Nur offene Leads können vorgemerkt werden"
-        
-        # Prüfe ob Lead bereits vorgemerkt ist
-        sql_already_marked = """
-            SELECT COUNT(*) as count
-            FROM lead_aktionen
-            WHERE lead_id = ? AND aktion_typ = 'zum Löschen vorgemerkt'
-        """
-        result = self.db.fetch_one(sql_already_marked, (lead_id,))
-        if result and result['count'] > 0:
-            return False, "Lead ist bereits zum Löschen vorgemerkt"
-        
-        # Markierung in lead_aktionen speichern
-        sql_insert = """
-            INSERT INTO lead_aktionen (lead_id, benutzer_id, aktion_typ, kommentar)
-            VALUES (?, ?, 'zum Löschen vorgemerkt', ?)
-        """
-        self.db.query(sql_insert, (lead_id, benutzer_id, kommentar))
-        return True, "Lead wurde erfolgreich zum Löschen vorgemerkt"
-    
-    def is_lead_marked_for_deletion(self, lead_id: int):
-        """Prüft ob ein Lead bereits zum Löschen vorgemerkt ist"""
-        sql = """
-            SELECT COUNT(*) as count
-            FROM lead_aktionen
-            WHERE lead_id = ? AND aktion_typ = 'zum Löschen vorgemerkt'
-        """
-        result = self.db.fetch_one(sql, (lead_id,))
-        return result['count'] > 0 if result else False
-    
-    def get_count_marked_for_deletion(self):
-        """Gibt die Anzahl aller zum Löschen vorgemerkten Leads zurück"""
-        sql = """
-            SELECT COUNT(DISTINCT lead_id) as count
-            FROM lead_aktionen
-            WHERE aktion_typ = 'zum Löschen vorgemerkt'
-        """
-        result = self.db.fetch_one(sql, ())
-        return result['count'] if result else 0
-
+from backend.lead_status_manager import LeadStatusManager, Lead
 
 # ============================================================================
 # VIEW-KLASSE (User Interface)
@@ -282,7 +23,7 @@ class LeadStatusView:
         self.page.clean()
         
         # Page-Einstellungen zurücksetzen (falls von Detailansicht zurückgekehrt)
-        self.page.padding = 20
+        self.page.padding = 5
         self.page.bgcolor = None
         
         self.leads = self.lead_manager.get_my_created_leads(self.current_user['benutzer_id'])
@@ -296,7 +37,7 @@ class LeadStatusView:
                 icon=ft.Icons.ARROW_BACK,
                 on_click=lambda e: self._go_back_to_menu()
             ),
-            ft.Text(f"Meine erstellten Leads ({len(filtered_leads)})", size=24, weight=ft.FontWeight.BOLD),
+            ft.Text(f"Meine erstellten Leads ({len(filtered_leads)})", size=18, weight=ft.FontWeight.BOLD),
             ft.IconButton(
                 icon=ft.Icons.REFRESH,
                 tooltip="Aktualisieren",
@@ -334,7 +75,7 @@ class LeadStatusView:
                     ft.Divider(height=10, color="transparent"),
                     lead_liste
                 ], scroll=ft.ScrollMode.AUTO),
-                padding=20,
+                padding=5,
                 expand=True
             )
         )
@@ -423,7 +164,7 @@ class LeadStatusView:
         status_badge = ft.Container(
             content=ft.Text(lead.status_name, size=12, weight=ft.FontWeight.BOLD),
             bgcolor=bg_color,
-            padding=ft.padding.symmetric(horizontal=8, vertical=4),
+            padding=ft.Padding.symmetric(horizontal=8, vertical=4),
             border_radius=4
         )
         
@@ -457,19 +198,34 @@ class LeadStatusView:
         # Titel-Zeile mit optionalem Badge
         badge_controls = []
         
+        # Prüfe ob mobile Ansicht (Breite < 600px)
+        is_mobile = self.page.width and self.page.width < 600
+        
         # Wenn zum Löschen vorgemerkt, zeige rotes Badge
         if is_marked_for_deletion:
-            badge_controls.append(
-                ft.Container(
-                    content=ft.Row([
-                        ft.Icon(ft.Icons.DELETE_OUTLINE, color="white", size=16),
-                        ft.Text("ZUM LÖSCHEN VORGEMERKT", size=11, color="white", weight=ft.FontWeight.BOLD)
-                    ], spacing=3),
-                    bgcolor="#dc2626",
-                    padding=ft.padding.symmetric(horizontal=6, vertical=3),
-                    border_radius=4,
+            if is_mobile:
+                # Mobile: Nur Icon
+                badge_controls.append(
+                    ft.Container(
+                        content=ft.Icon(ft.Icons.DELETE_OUTLINE, color="white", size=18),
+                        bgcolor="#dc2626",
+                        padding=ft.Padding.symmetric(horizontal=8, vertical=6),
+                        border_radius=4,
+                    )
                 )
-            )
+            else:
+                # Desktop: Icon + Text
+                badge_controls.append(
+                    ft.Container(
+                        content=ft.Row([
+                            ft.Icon(ft.Icons.DELETE_OUTLINE, color="white", size=16),
+                            ft.Text("ZUM LÖSCHEN VORGEMERKT", size=11, color="white", weight=ft.FontWeight.BOLD)
+                        ], spacing=3),
+                        bgcolor="#dc2626",
+                        padding=ft.Padding.symmetric(horizontal=6, vertical=3),
+                        border_radius=4,
+                    )
+                )
         # Sonst wenn andere Aktionen, zeige orange Badge
         elif has_update:
             badge_controls.append(
@@ -479,15 +235,32 @@ class LeadStatusView:
                         ft.Text("AKTUALISIERT", size=11, color="white", weight=ft.FontWeight.BOLD)
                     ], spacing=3),
                     bgcolor="orange",
-                    padding=ft.padding.symmetric(horizontal=6, vertical=3),
+                    padding=ft.Padding.symmetric(horizontal=6, vertical=3),
                     border_radius=4,
                 )
             )
         
-        title_content = ft.Row([
-            ft.Text(f"Lead #{lead.lead_id} - {lead.kunde_name}"),
-            *badge_controls
-        ], spacing=10)
+        # Titel-Zeile: Badge links auf Mobile, rechts auf Desktop
+        if is_mobile and badge_controls:
+            title_content = ft.Row([
+                *badge_controls,
+                ft.Text(
+                    f"Lead #{lead.lead_id} - {lead.kunde_name}",
+                    max_lines=2,
+                    overflow=ft.TextOverflow.ELLIPSIS,
+                    expand=True
+                ),
+            ], spacing=10)
+        else:
+            title_content = ft.Row([
+                ft.Text(
+                    f"Lead #{lead.lead_id} - {lead.kunde_name}",
+                    max_lines=2,
+                    overflow=ft.TextOverflow.ELLIPSIS,
+                    expand=True
+                ),
+                *badge_controls
+            ], spacing=10)
         
         # Card mit Hover-Effekt
         card_container = ft.Container(
@@ -498,16 +271,43 @@ class LeadStatusView:
                             leading=ft.Icon(ft.Icons.ASSIGNMENT),
                             title=title_content,
                             subtitle=ft.Row([
-                                ft.Text(f"{lead.produkt_name}"),
+                                ft.Text(
+                                    f"{lead.produkt_name}",
+                                    max_lines=2,
+                                    overflow=ft.TextOverflow.ELLIPSIS
+                                ),
                                 ft.Text("| Status:"),
                                 status_badge
                             ], spacing=5),
                         ),
+                        # Status-Zeile - unterschiedliche Anordnung für Mobile/Desktop
                         ft.Row([
+                            ft.Container(
+                                content=ft.Text(
+                                    f"Bearbeiter: {lead.bearbeiter_name}",
+                                    size=11,
+                                    color="grey",
+                                    max_lines=2,
+                                    overflow=ft.TextOverflow.ELLIPSIS,
+                                    text_align=ft.TextAlign.LEFT
+                                ),
+                                width=150
+                            ),
+                        ], spacing=10) if is_mobile else ft.Row([
                             ft.Icon(status_icon, color=bg_color, size=16),
                             ft.Text(status_desc, size=11, color=bg_color, weight=ft.FontWeight.BOLD),
                             ft.Container(expand=True),
-                            ft.Text(f"Bearbeiter: {lead.bearbeiter_name}", size=11, color="grey")
+                            ft.Container(
+                                content=ft.Text(
+                                    f"Bearbeiter: {lead.bearbeiter_name}",
+                                    size=11,
+                                    color="grey",
+                                    max_lines=2,
+                                    overflow=ft.TextOverflow.ELLIPSIS,
+                                    text_align=ft.TextAlign.RIGHT
+                                ),
+                                width=150
+                            )
                         ], spacing=10),
                         ft.Row([
                             ft.Text(f"Erfasst: {datum_text}", size=12, color="grey"),
@@ -557,6 +357,9 @@ class LeadDetailViewStatus:
         # Prüfe ob Lead bereits vorgemerkt ist
         is_marked = self.manager.is_lead_marked_for_deletion(self.lead.get('lead_id'))
         
+        # Prüfe ob mobile Ansicht (Breite < 600px)
+        is_mobile = self.page.width and self.page.width < 600
+        
         # Button zum Vormerken nur anzeigen wenn:
         # 1. Lead noch offen ist (status_id = 1)
         # 2. Benutzer der Erfasser ist
@@ -596,21 +399,47 @@ class LeadDetailViewStatus:
         # Zeige Info wenn bereits vorgemerkt
         if is_marked:
             header_controls.append(ft.Container(expand=True))  # Spacer
-            header_controls.append(
-                ft.Container(
-                    content=ft.Row([
-                        ft.Icon(ft.Icons.INFO_OUTLINE, color="#dc2626", size=20),
-                        ft.Text("Zum Löschen vorgemerkt", color="#dc2626", size=14, weight=ft.FontWeight.W_500)
-                    ], spacing=8),
-                    bgcolor="#fee2e2",
-                    padding=ft.padding.symmetric(horizontal=12, vertical=8),
-                    border_radius=8,
+            
+            if is_mobile:
+                # Mobile: Nur Info-Icon mit Dialog
+                def show_info_dialog(e):
+                    dialog = ft.AlertDialog(
+                        title=ft.Text("Zum Löschen vorgemerkt"),
+                        content=ft.Text("Dieser Lead ist zum Löschen vorgemerkt. Warte auf Administration."),
+                        actions=[ft.TextButton("OK", on_click=lambda e: self.page.pop_dialog())]
+                    )
+                    self.page.show_dialog(dialog)
+                
+                header_controls.append(
+                    ft.IconButton(
+                        icon=ft.Icons.INFO_OUTLINE,
+                        icon_color="#dc2626",
+                        icon_size=28,
+                        tooltip="Zum Löschen vorgemerkt",
+                        on_click=show_info_dialog,
+                        style=ft.ButtonStyle(
+                            bgcolor="#fee2e2",
+                            shape=ft.RoundedRectangleBorder(radius=8),
+                        )
+                    )
                 )
-            )
+            else:
+                # Desktop: Vollständiges Badge mit Text
+                header_controls.append(
+                    ft.Container(
+                        content=ft.Row([
+                            ft.Icon(ft.Icons.INFO_OUTLINE, color="#dc2626", size=20),
+                            ft.Text("Zum Löschen vorgemerkt", color="#dc2626", size=14, weight=ft.FontWeight.W_500)
+                        ], spacing=8),
+                        bgcolor="#fee2e2",
+                        padding=ft.Padding.symmetric(horizontal=12, vertical=8),
+                        border_radius=8,
+                    )
+                )
         
         header = ft.Container(
             content=ft.Row(header_controls, spacing=10),
-            padding=ft.padding.symmetric(horizontal=30, vertical=20),
+            padding=ft.Padding.symmetric(horizontal=10, vertical=20),
         )
         
         # Lead-Informationen
@@ -633,7 +462,7 @@ class LeadDetailViewStatus:
                     ft.Container(height=20),
                     kommentar_section,
                 ], scroll=ft.ScrollMode.AUTO),
-                padding=ft.padding.symmetric(horizontal=30, vertical=20),
+                padding=ft.Padding.symmetric(horizontal=10, vertical=20),
                 expand=True,
             )
         ], spacing=0, expand=True)
@@ -666,7 +495,7 @@ class LeadDetailViewStatus:
                     ft.Container(
                         content=ft.Text(self.lead.get('status_name', 'Offen'), size=14),
                         bgcolor=status_color,
-                        padding=ft.padding.symmetric(horizontal=15, vertical=8),
+                        padding=ft.Padding.symmetric(horizontal=15, vertical=8),
                         border_radius=20,
                     ),
                 ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
@@ -741,7 +570,7 @@ class LeadDetailViewStatus:
                     ], spacing=2),
                 ], spacing=30, wrap=True),
             ], spacing=10),
-            padding=25,
+            padding=15,
             border_radius=12,
         )
     
@@ -788,7 +617,7 @@ class LeadDetailViewStatus:
                         ], spacing=5),
                         padding=15,
                         border_radius=8,
-                        border=ft.border.all(1, ft.Colors.OUTLINE),
+                        border=ft.Border.all(1, ft.Colors.OUTLINE),
                     )
                 )
             
@@ -800,7 +629,7 @@ class LeadDetailViewStatus:
                 ft.Divider(color="#475569"),
                 content,
             ], spacing=10),
-            padding=25,
+            padding=15,
             border_radius=12,
         )
     
@@ -843,7 +672,7 @@ class LeadDetailViewStatus:
                         content=kommentar_content,
                         padding=15,
                         border_radius=8,
-                        border=ft.border.all(1, ft.Colors.OUTLINE),
+                        border=ft.Border.all(1, ft.Colors.OUTLINE),
                     )
                 )
             
@@ -855,7 +684,7 @@ class LeadDetailViewStatus:
                 ft.Divider(color="#475569"),
                 content,
             ], spacing=10),
-            padding=25,
+            padding=15,
             border_radius=12,
         )
     
@@ -915,7 +744,7 @@ class LeadDetailViewStatus:
             content=kommentar_field,
             actions=[
                 ft.TextButton("Abbrechen", on_click=cancel_edit),
-                ft.ElevatedButton(
+                ft.Button(
                     "Speichern",
                     bgcolor="#10b981",
                     color="white",
@@ -965,7 +794,7 @@ class LeadDetailViewStatus:
             ),
             actions=[
                 ft.TextButton("Abbrechen", on_click=cancel_mark),
-                ft.ElevatedButton(
+                ft.Button(
                     "Vormerken",
                     bgcolor="#dc2626",
                     color="white",

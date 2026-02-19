@@ -1,4 +1,5 @@
 import flet as ft
+from backend.benutzerfreigabe_manager import BenutzerfreigabeManager
 
 
 class BenutzerfreigabeView:
@@ -10,6 +11,9 @@ class BenutzerfreigabeView:
         self.db = db
         self.app_controller = app_controller
         self.pending_users = []
+        
+        # Manager initialisieren
+        self.manager = BenutzerfreigabeManager(db)
     
     def render(self):
         """Zeigt die Benutzerfreigabe-Ansicht"""
@@ -95,39 +99,15 @@ class BenutzerfreigabeView:
     
     def _load_pending_users_silent(self):
         """Lädt alle Benutzer mit is_approved = 0 und Passwort + Token (ohne Neu-Rendern)"""
-        try:
-            sql = """
-                SELECT benutzer_id, vorname, nachname, email, rolle_id
-                FROM benutzer 
-                WHERE is_approved = 0 
-                AND passwort_hash IS NOT NULL AND passwort_hash != '' 
-                AND session_token IS NOT NULL AND session_token != ''
-                ORDER BY benutzer_id DESC
-            """
-            self.pending_users = self.db.fetch_all(sql)
-        except Exception as e:
-            print(f"[ERROR] Fehler beim Laden der ausstehenden Benutzer: {e}")
-            self.pending_users = []
+        self.pending_users = self.manager.get_pending_users()
     
     def _load_pending_users(self):
         """Lädt alle Benutzer mit is_approved = 0 und Passwort + Token und rendert die Seite neu"""
-        try:
-            sql = """
-                SELECT benutzer_id, vorname, nachname, email, rolle_id
-                FROM benutzer 
-                WHERE is_approved = 0 
-                AND passwort_hash IS NOT NULL AND passwort_hash != '' 
-                AND session_token IS NOT NULL AND session_token != ''
-                ORDER BY benutzer_id DESC
-            """
-            self.pending_users = self.db.fetch_all(sql)
-            
-            # Seite neu rendern um Änderungen zu zeigen
-            if hasattr(self, 'page') and self.page:
-                self.render()
-        except Exception as e:
-            print(f"[ERROR] Fehler beim Laden der ausstehenden Benutzer: {e}")
-            self.pending_users = []
+        self.pending_users = self.manager.get_pending_users()
+        
+        # Seite neu rendern um Änderungen zu zeigen
+        if hasattr(self, 'page') and self.page:
+            self.render()
     
     def _create_users_table(self, text_color, text_secondary, table_bg, row_hover):
         """Erstellt die Tabelle mit den ausstehenden Benutzern"""
@@ -269,11 +249,10 @@ class BenutzerfreigabeView:
         return table
     
     def _approve_user(self, user_id):
-        """Genehmigt einen Benutzer (setzt is_approved auf 1)"""
-        try:
-            sql = "UPDATE benutzer SET is_approved = 1 WHERE benutzer_id = ?"
-            self.db.query(sql, (user_id,))
-            
+        """Genehmigt einen Benutzer (über Manager)"""
+        success = self.manager.approve_user(user_id)
+        
+        if success:
             # Erfolgs-Snackbar
             snackbar = ft.SnackBar(
                 content=ft.Text("Benutzer erfolgreich freigegeben!"),
@@ -285,9 +264,7 @@ class BenutzerfreigabeView:
             
             # Liste neu laden
             self._load_pending_users()
-            
-        except Exception as e:
-            print(f"[ERROR] Fehler beim Freigeben des Benutzers: {e}")
+        else:
             snackbar = ft.SnackBar(
                 content=ft.Text("Fehler beim Freigeben des Benutzers."),
                 bgcolor="#ef4444",
@@ -300,10 +277,9 @@ class BenutzerfreigabeView:
         """Zeigt Bestätigungsdialog und löscht den Benutzer bei Bestätigung"""
         def confirm_reject(e):
             self.page.pop_dialog()
-            try:
-                sql = "DELETE FROM benutzer WHERE benutzer_id = ?"
-                self.db.query(sql, (user_id,))
-                
+            success = self.manager.reject_user(user_id)
+            
+            if success:
                 # Erfolgs-Snackbar
                 snackbar = ft.SnackBar(
                     content=ft.Text("Benutzer wurde abgelehnt und gelöscht."),
@@ -315,9 +291,7 @@ class BenutzerfreigabeView:
                 
                 # Liste neu laden
                 self._load_pending_users()
-                
-            except Exception as e:
-                print(f"[ERROR] Fehler beim Ablehnen des Benutzers: {e}")
+            else:
                 snackbar = ft.SnackBar(
                     content=ft.Text("Fehler beim Ablehnen des Benutzers."),
                     bgcolor="#ef4444",

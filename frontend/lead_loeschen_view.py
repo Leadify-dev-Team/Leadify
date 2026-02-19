@@ -1,5 +1,6 @@
 import flet as ft
-from database import Database
+from backend.database import Database
+from backend.lead_loeschen_manager import LeadLoeschenManager
 
 
 class LeadLoeschenView:
@@ -14,6 +15,9 @@ class LeadLoeschenView:
         self.all_leads = []
         self.current_filter = "vorgemerkt"  # all, abgelehnt, vorgemerkt
         self.delete_button = None  # Referenz für den Löschen-Button
+        
+        # Manager initialisieren
+        self.manager = LeadLoeschenManager(db)
     
     def render(self):
         """Zeigt die Lead-Löschungs-Ansicht"""
@@ -168,36 +172,8 @@ class LeadLoeschenView:
         self.page.add(main_content)
     
     def _load_leads(self):
-        """Lädt Leads aus der Datenbank (zum Löschen vorgemerkt)"""
-        # SQL-Query für Leads die zum Löschen vorgemerkt sind
-        # Entweder durch Status (abgelehnt, archiviert) oder durch Mitarbeiter markiert
-        sql = """
-            SELECT DISTINCT
-                l.lead_id,
-                f.name as firma_name,
-                CONCAT(a.vorname, ' ', a.nachname) as ansprechpartner,
-                p.produkt as produktgruppe,
-                s.status as status_name,
-                l.status_id,
-                l.datum_erfasst,
-                CONCAT(b.vorname, ' ', b.nachname) as erfasser,
-                CASE 
-                    WHEN la.aktion_typ = 'zum Löschen vorgemerkt' THEN 1 
-                    ELSE 0 
-                END as ist_vorgemerkt
-            FROM lead l
-            LEFT JOIN ansprechpartner a ON l.ansprechpartner_id = a.id
-            LEFT JOIN firma f ON a.firma_id = f.id
-            LEFT JOIN produktgruppe p ON l.produktgruppe_id = p.produkt_id
-            LEFT JOIN status s ON l.status_id = s.id
-            LEFT JOIN benutzer b ON l.erfasser_id = b.benutzer_id
-            LEFT JOIN lead_aktionen la ON l.lead_id = la.lead_id AND la.aktion_typ = 'zum Löschen vorgemerkt'
-            WHERE l.status_id IN (4, 6) OR la.aktion_typ = 'zum Löschen vorgemerkt'
-            ORDER BY l.datum_erfasst DESC
-        """
-        
-        results = self.db.fetch_all(sql)
-        self.all_leads = results if results else []
+        """Lädt Leads aus der Datenbank (über Manager)"""
+        self.all_leads = self.manager.get_leads_for_deletion()
     
     def _render_lead_list(self, dark_mode, text_color, text_secondary, text_tertiary, tile_bg, border_color):
         """Rendert die Lead-Liste basierend auf Filter"""
@@ -383,25 +359,12 @@ class LeadLoeschenView:
             return
         
         def confirm_delete(e):
-            try:
-                # Leads mit allen abhängigen Daten löschen
-                deleted_count = 0
-                for lead_id in self.selected_leads:
-                    # Lösche zuerst abhängige Einträge
-                    # 1. Lead-Aktionen löschen
-                    sql_aktionen = "DELETE FROM lead_aktionen WHERE lead_id = ?"
-                    self.db.query(sql_aktionen, (lead_id,))
-                    
-                    # 2. Kommentare löschen
-                    sql_kommentare = "DELETE FROM kommentar WHERE lead_id = ?"
-                    self.db.query(sql_kommentare, (lead_id,))
-                    
-                    # 3. Lead selbst löschen
-                    sql_lead = "DELETE FROM lead WHERE lead_id = ?"
-                    self.db.query(sql_lead, (lead_id,))
-                    deleted_count += 1
-                
-                self.page.pop_dialog()
+            # Leads über Manager löschen
+            success, deleted_count, error_message = self.manager.delete_leads(list(self.selected_leads))
+            
+            self.page.pop_dialog()
+            
+            if success:
                 self.selected_leads.clear()
                 self._load_leads()
                 self.render()
@@ -417,12 +380,11 @@ class LeadLoeschenView:
                 self.page.snack_bar = snack_bar
                 snack_bar.open = True
                 self.page.update()
-            except Exception as ex:
-                self.page.pop_dialog()
+            else:
                 # Fehler-Snackbar
                 snack_bar = ft.SnackBar(
                     content=ft.Text(
-                        f"Fehler beim Löschen: {str(ex)}",
+                        error_message or "Fehler beim Löschen",
                         color="white"
                     ),
                     bgcolor="#dc2626",

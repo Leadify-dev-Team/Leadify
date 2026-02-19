@@ -1,4 +1,5 @@
 import flet as ft
+from backend.admin_menu_manager import AdminMenuManager
 
 
 class AdminMenuView:
@@ -13,6 +14,12 @@ class AdminMenuView:
         self.dark_mode_switch = None
         self.notification_badge = None
         self.notification_count = 0
+        
+        # Manager initialisieren
+        if app_controller and hasattr(app_controller, 'db'):
+            self.manager = AdminMenuManager(app_controller.db)
+        else:
+            self.manager = None
     
     def render(self):
         """Zeigt das Admin-Hauptmenü"""
@@ -316,35 +323,14 @@ class AdminMenuView:
     
     def _get_pending_leads_count(self):
         """Ermittelt die Anzahl der zum Löschen vorgemerkten Leads"""
-        if self.app_controller and hasattr(self.app_controller, 'db'):
-            try:
-                sql = """
-                    SELECT COUNT(DISTINCT lead_id) as count 
-                    FROM lead_aktionen 
-                    WHERE aktion_typ = 'zum Löschen vorgemerkt'
-                """
-                result = self.app_controller.db.fetch_one(sql)
-                return result.get('count', 0) if result else 0
-            except Exception as e:
-                print(f"[ERROR] Fehler beim Zählen vorgemerkter Leads: {e}")
-                return 0
+        if self.manager:
+            return self.manager.get_pending_leads_count()
         return 0
     
     def _get_pending_users_count(self):
         """Ermittelt die Anzahl der ausstehenden Benutzer zur Freigabe"""
-        if self.app_controller and hasattr(self.app_controller, 'db'):
-            try:
-                sql = """
-                    SELECT COUNT(*) as count FROM benutzer 
-                    WHERE is_approved = 0 
-                    AND passwort_hash IS NOT NULL AND passwort_hash != '' 
-                    AND session_token IS NOT NULL AND session_token != ''
-                """
-                result = self.app_controller.db.fetch_one(sql)
-                return result.get('count', 0) if result else 0
-            except Exception as e:
-                print(f"[ERROR] Fehler beim Zählen ausstehender Nutzer: {e}")
-                return 0
+        if self.manager:
+            return self.manager.get_pending_users_count()
         return 0
     
     def _navigate_to_delete_leads(self):
@@ -463,38 +449,9 @@ class AdminMenuView:
     
     def _get_notification_count(self):
         """Zählt die Benachrichtigungen (ausstehende Nutzer + Leads)"""
-        count = 0
-        
-        # Zähle ausstehende Nutzer zur Freigabe (is_approved = 0, mit Passwort und Token)
-        if self.app_controller and hasattr(self.app_controller, 'db'):
-            try:
-                sql = """
-                    SELECT COUNT(*) as count FROM benutzer 
-                    WHERE is_approved = 0 
-                    AND passwort_hash IS NOT NULL AND passwort_hash != '' 
-                    AND session_token IS NOT NULL AND session_token != ''
-                """
-                result = self.app_controller.db.fetch_one(sql)
-                if result:
-                    count += result.get('count', 0)
-            except Exception as e:
-                print(f"[ERROR] Fehler beim Zählen ausstehender Nutzer: {e}")
-        
-        # Zähle Leads zum Löschen (vorgemerkt durch Mitarbeiter)
-        if self.app_controller and hasattr(self.app_controller, 'db'):
-            try:
-                sql = """
-                    SELECT COUNT(DISTINCT lead_id) as count 
-                    FROM lead_aktionen 
-                    WHERE aktion_typ = 'zum Löschen vorgemerkt'
-                """
-                result = self.app_controller.db.fetch_one(sql)
-                if result:
-                    count += result.get('count', 0)
-            except Exception as e:
-                print(f"[ERROR] Fehler beim Zählen vorgemerkter Leads: {e}")
-        
-        return count
+        if self.manager:
+            return self.manager.get_notification_count()
+        return 0
     
     def _create_notification_button(self, text_color):
         """Erstellt den Benachrichtigungs-Button mit Badge"""
@@ -558,38 +515,11 @@ class AdminMenuView:
             close_menu(e)
             self._navigate_to_delete_leads()
         
-        # Zähle ausstehende Nutzer
-        pending_users = 0
-        if self.app_controller and hasattr(self.app_controller, 'db'):
-            try:
-                sql = """
-                    SELECT COUNT(*) as count FROM benutzer 
-                    WHERE is_approved = 0 
-                    AND passwort_hash IS NOT NULL AND passwort_hash != '' 
-                    AND session_token IS NOT NULL AND session_token != ''
-                """
-                result = self.app_controller.db.fetch_one(sql)
-                if result:
-                    pending_users = result.get('count', 0)
-            except Exception as e:
-                print(f"[ERROR] Fehler beim Zählen ausstehender Nutzer: {e}")
-                pending_users = 0
+        # Zähle ausstehende Nutzer über Manager
+        pending_users = self._get_pending_users_count()
         
-        # Zähle Leads zum Löschen (vorgemerkt durch Mitarbeiter)
-        pending_leads = 0
-        if self.app_controller and hasattr(self.app_controller, 'db'):
-            try:
-                sql = """
-                    SELECT COUNT(DISTINCT lead_id) as count 
-                    FROM lead_aktionen 
-                    WHERE aktion_typ = 'zum Löschen vorgemerkt'
-                """
-                result = self.app_controller.db.fetch_one(sql)
-                if result:
-                    pending_leads = result.get('count', 0)
-            except Exception as e:
-                print(f"[ERROR] Fehler beim Zählen vorgemerkter Leads: {e}")
-                pending_leads = 0
+        # Zähle Leads zum Löschen über Manager
+        pending_leads = self._get_pending_leads_count()
         
         notifications = []
         

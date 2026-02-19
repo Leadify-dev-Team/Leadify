@@ -211,6 +211,7 @@ __marimo__/
 session.json
 .myapp/
 db_config.py
+db_config.env
 leadify_main.sql
 leadify.sql
 update_lead_aktionen.sql
