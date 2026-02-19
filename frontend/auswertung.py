@@ -1,6 +1,6 @@
 import flet as ft
 from datetime import datetime
-from backend.auswertung_manager import AuswertungManager
+from api.api_client import AuswertungClient
 try:
     from openpyxl import Workbook
     EXCEL_AVAILABLE = True
@@ -15,7 +15,7 @@ except ImportError:
 class AuswertungView:
     """Zeigt alle Leads für Auswertungszwecke an"""
     
-    def __init__(self, page: ft.Page, manager: AuswertungManager, current_user: dict, app_controller=None):
+    def __init__(self, page: ft.Page, manager: AuswertungClient, current_user: dict, app_controller=None):
         self.page = page
         self.manager = manager
         self.current_user = current_user
@@ -421,7 +421,7 @@ class AuswertungView:
 class LeadDetailViewAuswertung:
     """Detailansicht eines Leads in der Auswertung (nur lesend)"""
     
-    def __init__(self, page: ft.Page, manager: AuswertungManager, lead: dict, parent_view):
+    def __init__(self, page: ft.Page, manager: AuswertungClient, lead: dict, parent_view):
         self.page = page
         self.manager = manager
         self.lead = lead

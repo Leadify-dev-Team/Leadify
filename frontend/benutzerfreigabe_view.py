@@ -1,11 +1,11 @@
 import flet as ft
-from backend.benutzerfreigabe_manager import BenutzerfreigabeManager
+from api.api_client import BenutzerfreigabeClient
 
 
 class BenutzerfreigabeView:
     """Ansicht zur Freigabe neuer Benutzer"""
     
-    def __init__(self, page: ft.Page, current_user: dict, db, app_controller=None):
+    def __init__(self, page: ft.Page, current_user: dict, db=None, app_controller=None):
         self.page = page
         self.current_user = current_user
         self.db = db
@@ -13,7 +13,7 @@ class BenutzerfreigabeView:
         self.pending_users = []
         
         # Manager initialisieren
-        self.manager = BenutzerfreigabeManager(db)
+        self.manager = BenutzerfreigabeClient()
     
     def render(self):
         """Zeigt die Benutzerfreigabe-Ansicht"""

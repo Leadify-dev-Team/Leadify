@@ -1,6 +1,6 @@
 import flet as ft
 from datetime import datetime
-from backend.lead_status_manager import LeadStatusManager, Lead
+from api.api_client import LeadStatusClient, Lead
 
 # ============================================================================
 # VIEW-KLASSE (User Interface)
@@ -9,7 +9,7 @@ from backend.lead_status_manager import LeadStatusManager, Lead
 class LeadStatusView:
     """Zeigt Status aller von diesem Benutzer erstellten Leads"""
     
-    def __init__(self, page: ft.Page, lead_manager: LeadStatusManager, current_user: dict):
+    def __init__(self, page: ft.Page, lead_manager: LeadStatusClient, current_user: dict):
         self.page = page
         self.lead_manager = lead_manager
         self.current_user = current_user
@@ -332,7 +332,7 @@ class LeadStatusView:
 class LeadDetailViewStatus:
     """Detailansicht eines Leads im Lead-Status (nur lesend)"""
     
-    def __init__(self, page: ft.Page, manager: LeadStatusManager, lead: dict, parent_view):
+    def __init__(self, page: ft.Page, manager: LeadStatusClient, lead: dict, parent_view):
         self.page = page
         self.manager = manager
         self.lead = lead

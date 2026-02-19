@@ -444,7 +444,9 @@ name = "leadify"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "fastapi" },
     { name = "flet", extra = ["all"] },
+    { name = "httpx" },
     { name = "openpyxl" },
     { name = "python-dotenv" },
     { name = "uvicorn" },
@@ -460,7 +462,9 @@ server = [
 [package.metadata]
 requires-dist = [
     { name = "bcrypt", marker = "extra == 'server'", specifier = ">=5.0.0" },
+    { name = "fastapi", specifier = ">=0.128.8" },
     { name = "flet", extras = ["all"], specifier = ">=0.80.5" },
+    { name = "httpx", specifier = ">=0.28.0" },
     { name = "mariadb", marker = "extra == 'server'", specifier = ">=1.1.14" },
     { name = "openpyxl", specifier = ">=3.1.5" },
     { name = "python-dotenv", specifier = ">=1.2.1" },

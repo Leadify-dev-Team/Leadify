@@ -1,17 +1,10 @@
 import flet as ft
-import backend.database as database
-from backend.auth_manager import AuthManager
-from frontend.lead_bearbeitung_view import LeadBearbeitungManager, LeadBearbeitungView
+from api.api_client import AuthClient, LeadBearbeitungClient, AussendienstClient, AuswertungClient, LeadStatusClient
+from frontend.lead_bearbeitung_view import LeadBearbeitungView
 import json
 from pathlib import Path
-from dotenv import load_dotenv
-import os
-
-# Lade die Umgebungsvariablen aus der .env Datei
-load_dotenv("db_config.env")  # Prüfer nutzt ggf. db_config_example.env als Vorlage
 
 # ========== Außendienst-Imports ==========
-from backend.Außendienst import AussendienstManager
 from frontend.aussendienst_view import AussendienstView
 # ==============================================
 
@@ -22,36 +15,35 @@ from frontend.benutzerfreigabe_view import BenutzerfreigabeView
 # ====================================
 
 # ========== Auswertungs-Imports ==========
-from frontend.auswertung import AuswertungManager, AuswertungView
+from frontend.auswertung import AuswertungView
 # =========================================
 
 # ========== Lead-Status-Imports ==========
-from frontend.lead_status_view import LeadStatusManager, LeadStatusView
+from frontend.lead_status_view import LeadStatusView
 # ==========================================
 
 
 class AppController:
     """Hauptsteuerung der Anwendung - verwaltet Navigation und Benutzer-Status"""
     
-    def __init__(self, page: ft.Page, db: database.Database):
+    def __init__(self, page: ft.Page):
         self.page = page
-        self.db = db
-        self.auth = AuthManager(db)
+        self.auth = AuthClient()
         self.current_user = None
         self.lead_bearbeitung_view = None  # Speichere Lead-View für persistente Filter
         
         # ========== NEU: Außendienst-Manager ==========
-        self.aussendienst_manager = AussendienstManager(db)
+        self.aussendienst_manager = AussendienstClient()
         self.aussendienst_view = None  # Speichere Außendienst-View
         # ==============================================
         
         # ========== Auswertungs-Manager ==========
-        self.auswertung_manager = AuswertungManager(db)
+        self.auswertung_manager = AuswertungClient()
         self.auswertung_view = None  # Speichere Auswertungs-View
         # ==========================================
         
         # ========== Lead-Status-Manager ==========
-        self.lead_status_manager = LeadStatusManager(db)
+        self.lead_status_manager = LeadStatusClient()
         self.lead_status_view = None  # Speichere Lead-Status-View
         # ========================================
         
@@ -126,7 +118,7 @@ class AppController:
         # NEU: Prüfe Anzahl neuer Leads für Badge
         anzahl_neue_leads = 0
         if self.current_user.get('rolle_id') in [1, 2]:
-            lead_manager = LeadBearbeitungManager(self.db)
+            lead_manager = LeadBearbeitungClient()
             anzahl_neue_leads = lead_manager.count_neue_leads(self.current_user['benutzer_id'])
         
         # Hamburger Menü
@@ -379,7 +371,7 @@ class AppController:
         # NEU: Prüfe Anzahl neuer Leads für Badge
         anzahl_neue_leads = 0
         if self.current_user.get('rolle_id') in [1, 2]:
-            lead_manager = LeadBearbeitungManager(self.db)
+            lead_manager = LeadBearbeitungClient()
             anzahl_neue_leads = lead_manager.count_neue_leads(self.current_user['benutzer_id'])
         
         # Button-Inhalt für "Meine Nachrichten" mit Badge
@@ -466,7 +458,7 @@ class AppController:
         self.page.clean()
         
         # Lead-Bearbeitung Manager initialisieren
-        lead_manager = LeadBearbeitungManager(self.db)
+        lead_manager = LeadBearbeitungClient()
         
         # Erstelle die View nur beim ersten Mal, danach wiederverwenden
         if self.lead_bearbeitung_view is None:
@@ -734,7 +726,7 @@ class AppController:
         if self.current_user.get('rolle_id') != 0:
             return
         
-        delete_view = LeadLoeschenView(self.page, self.db, self.current_user, self)
+        delete_view = LeadLoeschenView(self.page, current_user=self.current_user, app_controller=self)
         delete_view.render()
     
     def show_benutzerfreigabe(self):
@@ -742,7 +734,7 @@ class AppController:
         if self.current_user.get('rolle_id') != 0:
             return
         
-        benutzerfreigabe_view = BenutzerfreigabeView(self.page, self.current_user, self.db, self)
+        benutzerfreigabe_view = BenutzerfreigabeView(self.page, self.current_user, app_controller=self)
         benutzerfreigabe_view.render()
     # ====================================
     
@@ -908,7 +900,7 @@ class AppController:
                 ink=True,
                 border=ft.border.all(1, ft.Colors.OUTLINE),
             ),
-            padding=ft.padding.symmetric(horizontal=30),
+            padding=ft.Padding.symmetric(horizontal=30),
             alignment=ft.Alignment(0, 0),
         )
         
@@ -925,17 +917,8 @@ class AppController:
 
 def main(page: ft.Page):
     """Entry Point der Anwendung"""
-    # Datenbankverbindung
-    db = database.Database(
-        host=os.getenv("db_host"),
-        user=os.getenv("db_user"),
-        password=os.getenv("db_password"),
-        database=os.getenv("database"),
-        port=os.getenv("db_port")
-    )
-    
     # App-Controller initialisieren und starten
-    app = AppController(page, db)
+    app = AppController(page)
     app.start()
 
 

@@ -5,8 +5,10 @@ description = "Lead Management App zur systematischen Generierung und Bearbeitun
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "fastapi>=0.128.8",
     "flet[all]>=0.80.5",
     "openpyxl>=3.1.5",
+    "httpx>=0.28.0",
     "python-dotenv>=1.2.1",
     "uvicorn>=0.40.0",
     "websockets>=16.0",

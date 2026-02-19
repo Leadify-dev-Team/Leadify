@@ -1,5 +1,5 @@
 import flet as ft
-from backend.admin_menu_manager import AdminMenuManager
+from api.api_client import AdminMenuClient
 
 
 class AdminMenuView:
@@ -16,10 +16,7 @@ class AdminMenuView:
         self.notification_count = 0
         
         # Manager initialisieren
-        if app_controller and hasattr(app_controller, 'db'):
-            self.manager = AdminMenuManager(app_controller.db)
-        else:
-            self.manager = None
+        self.manager = AdminMenuClient()
     
     def render(self):
         """Zeigt das Admin-Hauptmenü"""

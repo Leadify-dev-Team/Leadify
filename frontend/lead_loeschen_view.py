@@ -1,12 +1,11 @@
 import flet as ft
-from backend.database import Database
-from backend.lead_loeschen_manager import LeadLoeschenManager
+from api.api_client import LeadLoeschenClient
 
 
 class LeadLoeschenView:
     """Ansicht zum Löschen von Leads mit Status-Filter"""
     
-    def __init__(self, page: ft.Page, db: Database, current_user: dict, app_controller=None):
+    def __init__(self, page: ft.Page, db=None, current_user: dict = None, app_controller=None):
         self.page = page
         self.db = db
         self.current_user = current_user
@@ -17,7 +16,7 @@ class LeadLoeschenView:
         self.delete_button = None  # Referenz für den Löschen-Button
         
         # Manager initialisieren
-        self.manager = LeadLoeschenManager(db)
+        self.manager = LeadLoeschenClient()
     
     def render(self):
         """Zeigt die Lead-Löschungs-Ansicht"""

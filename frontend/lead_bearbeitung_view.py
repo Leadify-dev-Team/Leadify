@@ -1,7 +1,6 @@
 import flet as ft
 from datetime import datetime
-from backend.database import Database
-from backend.lead_bearbeitung_manager import LeadBearbeitungManager, Lead
+from api.api_client import LeadBearbeitungClient, Lead
 
 
 # ============================================================================
@@ -11,7 +10,7 @@ from backend.lead_bearbeitung_manager import LeadBearbeitungManager, Lead
 class LeadBearbeitungView:
     """Hauptansicht: Liste aller zugewiesenen Leads"""
     
-    def __init__(self, page: ft.Page, lead_manager: LeadBearbeitungManager, current_user: dict):
+    def __init__(self, page: ft.Page, lead_manager: LeadBearbeitungClient, current_user: dict):
         self.page = page
         self.lead_manager = lead_manager
         self.current_user = current_user
@@ -258,7 +257,7 @@ class LeadBearbeitungView:
 class LeadDetailView:
     """Detailansicht eines einzelnen Leads mit allen Aktionen"""
     
-    def __init__(self, page: ft.Page, lead_manager: LeadBearbeitungManager, 
+    def __init__(self, page: ft.Page, lead_manager: LeadBearbeitungClient, 
                  current_user: dict, lead: Lead):
         self.page = page
         self.lead_manager = lead_manager
