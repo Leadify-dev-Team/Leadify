@@ -1,21 +1,38 @@
 [project]
-name = "leadify"
+name = "Leadify"
 version = "0.1.0"
 description = "Lead Management App zur systematischen Generierung und Bearbeitung von eingehenden Leads über eine mobile, sowie Desktop-Anwendung."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "fastapi>=0.128.8",
-    "flet[all]>=0.80.5",
-    "openpyxl>=3.1.5",
+    "flet>=0.80.5",
     "httpx>=0.28.0",
     "python-dotenv>=1.2.1",
-    "uvicorn>=0.40.0",
-    "websockets>=16.0",
 ]
 
 [project.optional-dependencies]
 server = [
+    "fastapi>=0.128.8",
+    "uvicorn>=0.40.0",
+    "websockets>=16.0",
     "mariadb>=1.1.14",
-    "bcrypt>=5.0.0", 
+    "bcrypt>=5.0.0",
+    "openpyxl>=3.1.5",
+]
+
+[tool.flet]
+# Flet Build-Konfiguration für APK
+org = "com.leadify"
+project_name = "Leadify"
+module = "main"
+
+[tool.flet.app.icons]
+# App Icons
+image = "src/assets/icon.png"
+
+[tool.flet.app.android]
+# Android-spezifische Einstellungen
+permissions = [
+    "android.permission.INTERNET",
+    "android.permission.ACCESS_NETWORK_STATE",
 ]

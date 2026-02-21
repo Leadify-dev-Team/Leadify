@@ -1,5 +1,9 @@
 import flet as ft
-from api.api_client import AuthClient, LeadBearbeitungClient, AussendienstClient, AuswertungClient, LeadStatusClient
+from api.api_client import (
+    AuthClient, LeadBearbeitungClient, AussendienstClient, 
+    AuswertungClient, LeadStatusClient, is_server_configured,
+    load_server_ip, save_server_ip, set_api_base_url
+)
 from frontend.lead_bearbeitung_view import LeadBearbeitungView
 import json
 from pathlib import Path
@@ -56,6 +60,56 @@ class AppController:
         # Theme laden und anwenden
         self._load_theme()
     
+    def _load_server_ip(self):
+        """Lädt die Server-IP aus Client Storage (Android-freundlich) oder Datei"""
+        try:
+            # Zuerst versuchen, aus Flet's Client Storage zu laden (funktioniert auf Android)
+            if hasattr(self.page, 'client_storage'):
+                ip = self.page.client_storage.get("leadify_server_ip")
+                if ip:
+                    print(f"IP aus Client Storage geladen: {ip}")
+                    return ip
+        except Exception as e:
+            print(f"Fehler beim Laden aus Client Storage: {e}")
+        
+        # Fallback: Aus Datei laden
+        try:
+            ip = load_server_ip()
+            if ip:
+                print(f"IP aus Datei geladen: {ip}")
+                return ip
+        except Exception as e:
+            print(f"Fehler beim Laden aus Datei: {e}")
+        
+        return None
+    
+    def _save_server_ip(self, ip_address: str) -> bool:
+        """Speichert die Server-IP in Client Storage (Android-freundlich) und Datei"""
+        success = False
+        
+        # Zuerst in Client Storage speichern (Android-freundlich)
+        try:
+            if hasattr(self.page, 'client_storage'):
+                self.page.client_storage.set("leadify_server_ip", ip_address)
+                print(f"IP in Client Storage gespeichert: {ip_address}")
+                success = True
+        except Exception as e:
+            print(f"Fehler beim Speichern in Client Storage: {e}")
+        
+        # Zusätzlich in Datei speichern (als Backup)
+        try:
+            if save_server_ip(ip_address):
+                print(f"IP in Datei gespeichert: {ip_address}")
+                success = True
+        except Exception as e:
+            print(f"Fehler beim Speichern in Datei: {e}")
+        
+        return success
+    
+    def _is_server_configured(self) -> bool:
+        """Prüft, ob eine Server-IP konfiguriert ist"""
+        return self._load_server_ip() is not None
+    
     def _load_theme(self):
         """Lädt gespeichertes Theme aus Datei"""
         theme_file = Path.home() / ".leadify_theme.json"
@@ -89,15 +143,40 @@ class AppController:
     
     def start(self):
         """Startet die Anwendung und prüft Auto-Login"""
-        is_logged_in, user_data, message = self.auth.check_auto_login()
-        
-        if is_logged_in:
-            self.current_user = user_data
-            self.show_main_app()
-        elif "Warte noch auf Admin-Freigabe" in message:
-            self.show_pending_approval()
-        else:
-            self.show_login_screen()
+        try:
+            # Zuerst prüfen, ob Server-IP konfiguriert ist
+            if not self._is_server_configured():
+                print("Keine Server-IP konfiguriert - zeige IP-Eingabe")
+                self.show_server_ip_screen()
+                return
+            
+            # Server-IP laden und setzen
+            saved_ip = self._load_server_ip()
+            if saved_ip:
+                print(f"Setze API-URL auf: {saved_ip}")
+                set_api_base_url(saved_ip)
+                # Auth-Client neu initialisieren
+                self.auth = AuthClient()
+            
+            # Versuche Auto-Login
+            is_logged_in, user_data, message = self.auth.check_auto_login()
+            
+            if is_logged_in:
+                self.current_user = user_data
+                self.show_main_app()
+            elif "Warte noch auf Admin-Freigabe" in message:
+                self.show_pending_approval()
+            elif "Keine Verbindung zum Server" in message:
+                # Server nicht erreichbar - erlaube IP-Änderung
+                self.show_server_connection_error()
+            else:
+                self.show_login_screen()
+        except Exception as e:
+            print(f"Fehler beim App-Start: {e}")
+            import traceback
+            traceback.print_exc()
+            # Fallback: Zeige IP-Konfiguration
+            self.show_server_ip_screen()
     
     def show_main_app(self):
         """Zeigt das Hauptmenü nach erfolgreichem Login"""
@@ -208,6 +287,11 @@ class AppController:
                 leading=ft.Icon(ft.Icons.LOCK),
                 title=ft.Text("Passwort ändern"),
                 on_click=self._show_change_password
+            ),
+            ft.ListTile(
+                leading=ft.Icon(ft.Icons.SETTINGS),
+                title=ft.Text("Server-Einstellungen"),
+                on_click=self._show_server_settings
             ),
             ft.Divider(),
             ft.ListTile(
@@ -364,6 +448,100 @@ class AppController:
         )
         
         self.page.show_dialog(password_dialog)
+    
+    async def _show_server_settings(self, e=None):
+        """Zeigt Dialog zum Ändern der Server-Einstellungen"""
+        await self.page.close_end_drawer()
+        
+        # Lade aktuelle IP
+        current_ip = self._load_server_ip() or "127.0.0.1"
+        
+        # Eingabefelder
+        ip_field = ft.TextField(
+            label="Server-IP-Adresse",
+            hint_text="z.B. 100.64.0.1 oder 192.168.1.100",
+            value=current_ip,
+            width=300
+        )
+        
+        port_field = ft.TextField(
+            label="Port",
+            value="8000",
+            width=150
+        )
+        
+        status_text = ft.Text("", color="red", size=12)
+        
+        async def save_settings_clicked(e):
+            ip_address = ip_field.value
+            port = port_field.value
+            
+            if not ip_address:
+                status_text.value = "Bitte eine IP-Adresse eingeben"
+                status_text.color = "red"
+                self.page.update()
+                return
+            
+            # Validierung: Port muss eine Zahl sein
+            try:
+                port_number = int(port)
+                if port_number < 1 or port_number > 65535:
+                    raise ValueError()
+            except:
+                status_text.value = "Bitte einen gültigen Port eingeben (1-65535)"
+                status_text.color = "red"
+                self.page.update()
+                return
+            
+            # IP-Adresse speichern und API-URL setzen
+            if self._save_server_ip(ip_address):
+                set_api_base_url(ip_address, port_number)
+                
+                # Auth-Client neu initialisieren
+                self.auth = AuthClient()
+                
+                status_text.value = "Einstellungen gespeichert!"
+                status_text.color = "green"
+                self.page.update()
+                
+                # Dialog nach kurzer Verzögerung schließen
+                import asyncio
+                await asyncio.sleep(1)
+                self.page.pop_dialog()
+                
+                # Zeige Erfolgshinweis
+                success_dialog = ft.AlertDialog(
+                    title=ft.Text("Erfolg", color=ft.Colors.GREEN),
+                    content=ft.Text(
+                        f"Server-IP wurde auf {ip_address}:{port_number} gesetzt.\n\n"
+                        "Bitte stelle sicher, dass der Server unter dieser Adresse erreichbar ist."
+                    ),
+                    actions=[ft.TextButton("OK", on_click=lambda e: self.page.pop_dialog())]
+                )
+                self.page.show_dialog(success_dialog)
+            else:
+                status_text.value = "Fehler beim Speichern der Konfiguration"
+                status_text.color = "red"
+                self.page.update()
+        
+        settings_dialog = ft.AlertDialog(
+            title=ft.Text("Server-Einstellungen"),
+            content=ft.Container(
+                content=ft.Column([
+                    ft.Text("Gib die IP-Adresse des Leadify-Servers ein:", size=13),
+                    ip_field,
+                    port_field,
+                    status_text
+                ], tight=True, spacing=15),
+                width=350
+            ),
+            actions=[
+                ft.TextButton("Abbrechen", on_click=lambda e: self.page.pop_dialog()),
+                ft.Button("Speichern", on_click=save_settings_clicked)
+            ]
+        )
+        
+        self.page.show_dialog(settings_dialog)
     
     def _create_quick_access_buttons(self):
         """Erstellt Schnellzugriff-Buttons basierend auf Benutzerrolle"""
@@ -522,6 +700,144 @@ class AppController:
         self.lead_status_view.render()
     # ==============================================
 
+    
+    def show_server_ip_screen(self):
+        """Zeigt den IP-Adress-Eingabebildschirm für Server-Konfiguration"""
+        try:
+            self.page.clean()
+        except Exception as e:
+            print(f"Fehler beim Leeren der Seite: {e}")
+        
+        # Lade gespeicherte IP falls vorhanden
+        saved_ip = self._load_server_ip()
+        print(f"Gespeicherte IP beim Laden des IP-Screens: {saved_ip}")
+        
+        # Breite für mobile Geräte anpassen
+        field_width = min(400, self.page.width * 0.9) if self.page.width else 400
+        
+        ip_field = ft.TextField(
+            label="Server-IP-Adresse",
+            hint_text="z.B. 100.64.0.1",
+            value=saved_ip or "",
+            width=field_width,
+            autofocus=True
+        )
+        
+        port_field = ft.TextField(
+            label="Port",
+            value="8000",
+            width=150
+        )
+        
+        status_text = ft.Text("", color="red")
+        
+        def save_and_continue(e):
+            ip_address = ip_field.value
+            port = port_field.value
+            
+            print(f"Versuche IP zu speichern: {ip_address}")
+            
+            if not ip_address:
+                status_text.value = "Bitte eine IP-Adresse eingeben."
+                status_text.color = "red"
+                self.page.update()
+                return
+            
+            # Validierung: Port muss eine Zahl sein
+            try:
+                port_number = int(port)
+                if port_number < 1 or port_number > 65535:
+                    raise ValueError()
+            except:
+                status_text.value = "Bitte einen gültigen Port eingeben (1-65535)."
+                status_text.color = "red"
+                self.page.update()
+                return
+            
+            # IP-Adresse speichern und API-URL setzen
+            print(f"Rufe _save_server_ip auf mit: {ip_address}")
+            if self._save_server_ip(ip_address):
+                print("IP erfolgreich gespeichert, setze API-URL")
+                set_api_base_url(ip_address, port_number)
+                status_text.value = "Server-Konfiguration gespeichert!"
+                status_text.color = "green"
+                self.page.update()
+                
+                # Kurz warten und dann zum Login weiterleiten
+                import time
+                time.sleep(0.5)
+                
+                # Auth-Client neu initialisieren
+                self.auth = AuthClient()
+                
+                # Weiter zum Login
+                print("Weiterleitung zum Login")
+                self.show_login_screen()
+            else:
+                print("Fehler beim Speichern der IP")
+                status_text.value = "Fehler beim Speichern der Konfiguration."
+                status_text.color = "red"
+                self.page.update()
+        
+        try:
+            self.page.add(
+                ft.Column([
+                    ft.Text("Server-Konfiguration", size=24, weight=ft.FontWeight.BOLD),
+                    ft.Text(
+                        "Bitte geben Sie die IP-Adresse des Leadify-Servers ein.",
+                        size=14,
+                        text_align=ft.TextAlign.CENTER
+                    ),
+                    ft.Container(height=20),
+                    ip_field,
+                    ft.Row([
+                        port_field,
+                    ], alignment=ft.MainAxisAlignment.CENTER),
+                    ft.Container(height=10),
+                    ft.Button(
+                        "Speichern und Fortfahren",
+                        width=min(400, field_width),
+                        on_click=save_and_continue
+                    ),
+                    status_text,
+                ],
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                scroll=ft.ScrollMode.AUTO)
+            )
+            self.page.update()
+        except Exception as e:
+            print(f"Fehler beim Anzeigen des IP-Screens: {e}")
+    
+    def show_server_connection_error(self):
+        """Zeigt Fehlerbildschirm bei Server-Verbindungsproblemen"""
+        self.page.clean()
+        
+        current_ip = self._load_server_ip() or "Nicht konfiguriert"
+        
+        self.page.add(
+            ft.Column([
+                ft.Icon(ft.Icons.CLOUD_OFF, size=64, color="red"),
+                ft.Text("Server nicht erreichbar", size=24, weight=ft.FontWeight.BOLD),
+                ft.Text(
+                    f"Die Verbindung zum Server unter {current_ip} ist fehlgeschlagen.\n"
+                    "Bitte überprüfen Sie die Server-IP-Adresse.",
+                    size=14,
+                    text_align=ft.TextAlign.CENTER
+                ),
+                ft.Container(height=20),
+                ft.Button(
+                    "Server-IP ändern",
+                    icon=ft.Icons.SETTINGS,
+                    on_click=lambda e: self.show_server_ip_screen()
+                ),
+                ft.Button(
+                    "Erneut verbinden",
+                    icon=ft.Icons.REFRESH,
+                    on_click=lambda e: self.start()
+                )
+            ],
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER)
+        )
     
     def show_pending_approval(self):
         """Zeigt Wartebildschirm für Admin-Freigabe"""
@@ -813,6 +1129,11 @@ class AppController:
                 title=ft.Text("Passwort ändern"),
                 on_click=self._show_change_password
             ),
+            ft.ListTile(
+                leading=ft.Icon(ft.Icons.SETTINGS),
+                title=ft.Text("Server-Einstellungen"),
+                on_click=self._show_server_settings
+            ),
             ft.Divider(),
             ft.ListTile(
                 leading=ft.Icon(ft.Icons.LOGOUT),
@@ -917,10 +1238,28 @@ class AppController:
 
 def main(page: ft.Page):
     """Entry Point der Anwendung"""
-    # App-Controller initialisieren und starten
-    app = AppController(page)
-    app.start()
+    try:
+        # Debug-Informationen
+        print(f"App gestartet - Platform: {page.platform}")
+        print(f"Page width: {page.width}, height: {page.height}")
+        
+        # App-Controller initialisieren und starten
+        app = AppController(page)
+        app.start()
+    except Exception as e:
+        print(f"Kritischer Fehler beim App-Start: {e}")
+        import traceback
+        traceback.print_exc()
+        
+        # Zeige Fehlermeldung
+        page.add(
+            ft.Column([
+                ft.Text("Fehler beim App-Start", size=24, color="red"),
+                ft.Text(str(e), size=14),
+                ft.Button("Neu starten", on_click=lambda e: page.window_close())
+            ],
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER)
+        )
 
 
-if __name__ == "__main__":
-    ft.run(main)
+ft.run(main)
