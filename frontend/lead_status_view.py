@@ -346,9 +346,6 @@ class LeadDetailViewStatus:
         self.page.clean()
         self.page.padding = 0
         
-        # Markiere Lead als angesehen durch den aktuellen Benutzer
-        self.manager.mark_lead_as_viewed(self.lead.get('lead_id'), self.current_user['benutzer_id'])
-        
         # Aktualisierte Daten laden
         self.lead = self.manager.get_lead_by_id(self.lead.get('lead_id'))
         self.aktionen = self.manager.get_lead_aktionen(self.lead.get('lead_id'))
