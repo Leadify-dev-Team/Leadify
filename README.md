@@ -33,11 +33,31 @@ Die Anwendung folgt einer modernen **3-Schichten-Architektur**:
 ### Voraussetzung: API starten
 Die **FastAPI muss zuerst laufen**, damit das Frontend funktioniert!
 
+#### Nur lokal (localhost):
 ```bash
 uvicorn api.api_main:app --reload
 ```
 
-Die API läuft dann unter `http://127.0.0.1:8000/api` und stellt alle Endpunkte bereit:
+#### Für externe Erreichbarkeit (Tailscale, LAN, etc.):
+```bash
+uvicorn api.api_main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+**Mit `--host 0.0.0.0`** ist der Server über alle Netzwerkschnittstellen erreichbar:
+- 🌐 Tailscale-IP (z.B. `100.64.0.1:8000`)
+- 🏠 LAN-IP (z.B. `192.168.1.100:8000`)
+- 💻 Localhost (`127.0.0.1:8000`)
+
+**Tipp:** Tailscale-IP herausfinden:
+```bash
+# Windows
+tailscale ip -4
+
+# Linux/macOS
+tailscale ip -4
+```
+
+Die API läuft dann unter `http://<DEINE-IP>:8000/api` und stellt alle Endpunkte bereit:
 - `/api/auth/` - Authentifizierung (Login, Register, Logout)
 - `/api/leads/` - Lead-Bearbeitung
 - `/api/aussendienst/` - Außendienst & Lead-Erstellung

@@ -1,31 +1,25 @@
 import uuid
 import json
 import os
+import platform
 from pathlib import Path
 import bcrypt
 from datetime import datetime
 
 
 class AuthManager:
-    """Verwaltet Authentifizierung und Session-Tokens"""
+    """Verwaltet Authentifizierung mit Multi-Device-Support (Android + Desktop)"""
     
     def __init__(self, db):
         self.db = db
-        self.token_file = self._get_token_path()
-    
-    def _get_token_path(self):
-        """Bestimmt den Speicherort für das Token (plattformunabhängig)"""
-        # Für Flet-Apps: Im User-Verzeichnis speichern
-        app_data = Path.home() / ".myapp"
-        app_data.mkdir(exist_ok=True)
-        return app_data / "session.json"
+        print(f"🔧 AuthManager initialisiert")
     
     def register_user(self, email, password):
         """
         Registriert einen Mitarbeiter (setzt Passwort für existierende Email)
         Returns: (success: bool, message: str, token: str or None)
         """
-        # Prüfen ob Email im System existiert (Mitarbeiter muss bereits angelegt sein)
+        # Prüfen ob Email im System existiert
         user = self.db.fetch_one(
             "SELECT benutzer_id, passwort_hash, vorname, nachname FROM benutzer WHERE email = ?",
             (email,)
@@ -41,28 +35,25 @@ class AuthManager:
         # Passwort hashen
         hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
         
-        # Session-Token generieren
-        token = str(uuid.uuid4())
-        
-        # Passwort und Token setzen (is_approved=0, muss vom Admin freigegeben werden)
+        # Passwort setzen (is_approved=0, muss vom Admin freigegeben werden)
         result = self.db.query(
             """UPDATE benutzer 
-               SET passwort_hash = ?, session_token = ?, token_created_at = NOW(), is_approved = 0
+               SET passwort_hash = ?, is_approved = 0
                WHERE benutzer_id = ?""",
-            (hashed, token, user['benutzer_id'])
+            (hashed, user['benutzer_id'])
         )
         
         if result:
-            # Token lokal speichern (aber noch nicht "genehmigt")
-            self._save_token(token, email, approved=False)
-            return True, "Registrierung erfolgreich! Warte auf Admin-Freigabe.", token
+            print(f"✅ Benutzer registriert: {email} (wartet auf Freigabe)")
+            return True, "Registrierung erfolgreich! Warte auf Admin-Freigabe.", None
         
         return False, "Fehler bei der Registrierung.", None
     
-    def login_user(self, email, password):
+    def login_user(self, email, password, device_id=None, device_name=None):
         """
-        Meldet einen Benutzer an
-        Returns: (success: bool, message: str, user_data: dict or None)
+        Meldet einen Benutzer an und erstellt eine Device-spezifische Session
+        Returns: (success: bool, message: str, result: dict or None)
+                 result = {"user": user_data, "token": token, "device_id": device_id}
         """
         # Benutzer aus DB abrufen
         user = self.db.fetch_one(
@@ -75,15 +66,14 @@ class AuthManager:
         if not user:
             return False, "E-Mail oder Passwort falsch.", None
         
-        # Prüfen ob überhaupt ein Passwort gesetzt wurde (Registrierung erfolgt?)
+        # Prüfen ob überhaupt ein Passwort gesetzt wurde
         if not user['passwort_hash'] or user['passwort_hash'].strip() == '':
             return False, "Für diese E-Mail wurde noch kein Passwort gesetzt. Bitte erst registrieren.", None
         
-        # Passwort prüfen (mit Fehlerbehandlung für ungültige Hashes)
+        # Passwort prüfen
         try:
             password_correct = bcrypt.checkpw(password.encode(), user['passwort_hash'].encode())
         except (ValueError, AttributeError) as e:
-            # Falls Hash ungültig ist
             print(f"⚠️ Ungültiger Passwort-Hash für {email}: {e}")
             return False, "E-Mail oder Passwort falsch.", None
         
@@ -94,72 +84,149 @@ class AuthManager:
         if not user['is_approved']:
             return False, "Dein Account wurde noch nicht freigeschaltet.", None
         
-        # Neues Token generieren
+        # Device-ID generieren falls nicht übergeben
+        if not device_id:
+            device_id = str(uuid.uuid4())
+        
+        if not device_name:
+            device_name = "Unbekanntes Gerät"
+        
+        # Session-Token generieren
         token = str(uuid.uuid4())
         
-        # Token in DB speichern
-        self.db.query(
-            "UPDATE benutzer SET session_token = ?, token_created_at = NOW() WHERE benutzer_id = ?",
-            (token, user['benutzer_id'])
+        # Prüfen ob bereits eine Session für dieses Gerät existiert
+        existing_session = self.db.fetch_one(
+            """SELECT session_id FROM sessions 
+               WHERE benutzer_id = ? AND device_id = ?""",
+            (user['benutzer_id'], device_id)
         )
         
-        # Token lokal speichern
-        self._save_token(token, email, approved=True)
+        if existing_session:
+            # Existierende Session aktualisieren
+            self.db.query(
+                """UPDATE sessions 
+                   SET token = ?, last_used = NOW() 
+                   WHERE session_id = ?""",
+                (token, existing_session['session_id'])
+            )
+            print(f"🔄 Session aktualisiert für {email} auf {device_name}")
+        else:
+            # Neue Session erstellen
+            self.db.query(
+                """INSERT INTO sessions (benutzer_id, token, device_id, device_name, created_at, last_used)
+                   VALUES (?, ?, ?, ?, NOW(), NOW())""",
+                (user['benutzer_id'], token, device_id, device_name)
+            )
+            print(f"✅ Neue Session erstellt für {email} auf {device_name}")
         
-        return True, "Login erfolgreich!", user
+        # User-Daten + Token + Device-ID zurückgeben
+        result = {
+            "user": {
+                'benutzer_id': user['benutzer_id'],
+                'email': user['email'],
+                'vorname': user['vorname'],
+                'nachname': user['nachname'],
+                'rolle_id': user['rolle_id']
+            },
+            "token": token,
+            "device_id": device_id
+        }
+        
+        return True, "Login erfolgreich!", result
     
-    def check_auto_login(self):
+    def check_auto_login(self, token, device_id):
         """
-        Prüft bei App-Start, ob ein gültiges Token vorhanden ist
+        Prüft ob ein Token für ein bestimmtes Gerät noch gültig ist
         Returns: (is_logged_in: bool, user_data: dict or None, message: str)
         """
-        # Token aus lokalem Speicher laden
-        token_data = self._load_token()
+        if not token or not device_id:
+            print("ℹ️ Token oder Device-ID fehlt")
+            return False, None, "Token oder Device-ID fehlt."
         
-        if not token_data or not token_data.get('token'):
-            return False, None, "Kein gespeichertes Token gefunden."
-        
-        token = token_data['token']
-        
-        # Token in Datenbank prüfen
-        user = self.db.fetch_one(
-            """SELECT benutzer_id, email, vorname, nachname, rolle_id, is_approved
-               FROM benutzer 
-               WHERE session_token = ? AND is_approved = 1""",
-            (token,)
+        # Session in Datenbank prüfen (nur für dieses Gerät!)
+        session = self.db.fetch_one(
+            """SELECT s.session_id, s.benutzer_id, b.email, b.vorname, b.nachname, 
+                      b.rolle_id, b.is_approved
+               FROM sessions s
+               JOIN benutzer b ON s.benutzer_id = b.benutzer_id
+               WHERE s.token = ? AND s.device_id = ? AND b.is_approved = 1""",
+            (token, device_id)
         )
         
-        if user:
-            return True, user, "Automatisch angemeldet."
-        
-        # Token ungültig oder nicht genehmigt
-        self._clear_token()
+        if session:
+            # Session aktualisieren (last_used)
+            self.db.query(
+                "UPDATE sessions SET last_used = NOW() WHERE session_id = ?",
+                (session['session_id'],)
+            )
+            
+            # User-Daten zurückgeben
+            user_data = {
+                'benutzer_id': session['benutzer_id'],
+                'email': session['email'],
+                'vorname': session['vorname'],
+                'nachname': session['nachname'],
+                'rolle_id': session['rolle_id']
+            }
+            print(f"✅ Auto-Login erfolgreich: {session['email']}")
+            return True, user_data, "Automatisch angemeldet."
         
         # Prüfen ob nur die Genehmigung fehlt
         pending = self.db.fetch_one(
-            """SELECT benutzer_id, email FROM benutzer 
-               WHERE session_token = ? AND is_approved = 0""",
-            (token,)
+            """SELECT b.benutzer_id, b.email 
+               FROM sessions s
+               JOIN benutzer b ON s.benutzer_id = b.benutzer_id
+               WHERE s.token = ? AND s.device_id = ? AND b.is_approved = 0""",
+            (token, device_id)
         )
         
         if pending:
+            print(f"⏳ Benutzer {pending['email']} wartet auf Admin-Freigabe")
             return False, None, "Warte noch auf Admin-Freigabe."
         
+        print("❌ Token ungültig oder abgelaufen")
         return False, None, "Token ungültig. Bitte neu anmelden."
     
-    def logout(self):
-        """Meldet den Benutzer ab"""
-        token_data = self._load_token()
-        
-        if token_data and token_data.get('token'):
-            # Token aus DB entfernen
+    def logout(self, token, device_id):
+        """Meldet das angegebene Gerät ab (andere Geräte bleiben angemeldet)"""
+        if token and device_id:
+            # Session aus DB entfernen (nur für dieses Gerät)
             self.db.query(
-                "UPDATE benutzer SET session_token = NULL WHERE session_token = ?",
-                (token_data['token'],)
+                "DELETE FROM sessions WHERE token = ? AND device_id = ?",
+                (token, device_id)
             )
-        
-        # Lokales Token löschen
-        self._clear_token()
+            print(f"✅ Logout erfolgreich für Device-ID {device_id[:8]}...")
+            return True, "Erfolgreich abgemeldet."
+        return False, "Token oder Device-ID fehlt."
+    
+    def logout_all_devices(self, benutzer_id):
+        """Meldet alle Geräte eines Benutzers ab"""
+        self.db.query(
+            "DELETE FROM sessions WHERE benutzer_id = ?",
+            (benutzer_id,)
+        )
+        print(f"✅ Alle Geräte abgemeldet für Benutzer-ID {benutzer_id}")
+        return True, f"Alle Geräte abgemeldet."
+    
+    def get_active_sessions(self, benutzer_id, current_device_id=None):
+        """Gibt alle aktiven Sessions eines Benutzers zurück"""
+        sessions = self.db.fetch_all(
+            """SELECT session_id, device_name, created_at, last_used, 
+                      device_id, (device_id = ?) as is_current
+               FROM sessions 
+               WHERE benutzer_id = ?
+               ORDER BY last_used DESC""",
+            (current_device_id or "", benutzer_id)
+        )
+        return sessions or []
+    
+    def revoke_session(self, session_id):
+        """Entfernt eine bestimmte Session"""
+        self.db.query(
+            "DELETE FROM sessions WHERE session_id = ?",
+            (session_id,)
+        )
+        print(f"✅ Session {session_id} widerrufen")
     
     def change_password(self, benutzer_id, old_password, new_password):
         """Ändert das Passwort eines Benutzers"""
@@ -186,35 +253,8 @@ class AuthManager:
                 (hashed_password.decode('utf-8'), benutzer_id)
             )
             
+            print(f"✅ Passwort geändert für Benutzer-ID {benutzer_id}")
             return True, "Passwort erfolgreich geändert"
             
         except Exception as e:
             return False, f"Fehler beim Ändern des Passworts: {str(e)}"
-    
-    def _save_token(self, token, email, approved=True):
-        """Speichert Token lokal"""
-        data = {
-            'token': token,
-            'email': email,
-            'approved': approved,
-            'created_at': datetime.now().isoformat()
-        }
-        
-        with open(self.token_file, 'w') as f:
-            json.dump(data, f)
-    
-    def _load_token(self):
-        """Lädt Token aus lokalem Speicher"""
-        if not self.token_file.exists():
-            return None
-        
-        try:
-            with open(self.token_file, 'r') as f:
-                return json.load(f)
-        except:
-            return None
-    
-    def _clear_token(self):
-        """Löscht lokales Token"""
-        if self.token_file.exists():
-            os.remove(self.token_file)

@@ -66,6 +66,8 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: str
     password: str
+    device_id: str | None = None
+    device_name: str | None = None
 
 
 class ChangePasswordRequest(BaseModel):
@@ -76,6 +78,12 @@ class ChangePasswordRequest(BaseModel):
 
 class AutoLoginRequest(BaseModel):
     token: str
+    device_id: str
+
+
+class LogoutRequest(BaseModel):
+    token: str
+    device_id: str
 
 
 # ── Leads (Bearbeitung) ────────────────────────────────────────────────────
@@ -218,19 +226,21 @@ def register(req: RegisterRequest, db: Database = Depends(get_db)):
 @auth_router.post("/login")
 def login(req: LoginRequest, db: Database = Depends(get_db)):
     auth = AuthManager(db)
-    success, message, user_data = auth.login_user(req.email, req.password)
+    success, message, result = auth.login_user(
+        req.email, req.password, req.device_id, req.device_name
+    )
     return {
         "success": success,
         "message": message,
-        "user": _row_to_dict(user_data) if user_data else None,
+        "result": result,  # enthält user, token, device_id
     }
 
 
 @auth_router.post("/auto-login")
-def auto_login(db: Database = Depends(get_db)):
-    """Prüft Auto-Login anhand des lokal gespeicherten Tokens."""
+def auto_login(req: AutoLoginRequest, db: Database = Depends(get_db)):
+    """Prüft Auto-Login anhand des vom Client gesendeten Tokens."""
     auth = AuthManager(db)
-    is_logged_in, user_data, message = auth.check_auto_login()
+    is_logged_in, user_data, message = auth.check_auto_login(req.token, req.device_id)
     return {
         "is_logged_in": is_logged_in,
         "user": _row_to_dict(user_data) if user_data else None,
@@ -239,10 +249,10 @@ def auto_login(db: Database = Depends(get_db)):
 
 
 @auth_router.post("/logout")
-def logout(db: Database = Depends(get_db)):
+def logout(req: LogoutRequest, db: Database = Depends(get_db)):
     auth = AuthManager(db)
-    auth.logout()
-    return {"success": True, "message": "Erfolgreich abgemeldet."}
+    success, message = auth.logout(req.token, req.device_id)
+    return {"success": success, "message": message}
 
 
 @auth_router.put("/change-password")

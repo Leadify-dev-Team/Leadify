@@ -9,14 +9,318 @@ Das Frontend importiert diese Klassen anstelle der Backend-Manager.
 import httpx
 from pathlib import Path
 from datetime import datetime
+import json
+import os
 
 # ============================================================================
 # KONFIGURATION
 # ============================================================================
 
 API_BASE_URL = "http://127.0.0.1:8000/api"
+_client = None
 
-_client = httpx.Client(base_url=API_BASE_URL, timeout=30.0)
+
+def get_config_file_path():
+    """Gibt den Pfad zur IP-Konfigurationsdatei zurück."""
+    try:
+        # Versuche verschiedene Speicherorte in Prioritätsreihenfolge
+        locations = []
+        
+        # 1. App-spezifisches Datenverzeichnis (Android-freundlich)
+        if 'FLET_APP_STORAGE_DATA' in os.environ:
+            locations.append(Path(os.environ['FLET_APP_STORAGE_DATA']) / "leadify_server_config.json")
+        
+        # 2. Home-Verzeichnis
+        try:
+            locations.append(Path.home() / ".leadify_server_config.json")
+        except:
+            pass
+        
+        # 3. Temporäres Verzeichnis
+        try:
+            import tempfile
+            locations.append(Path(tempfile.gettempdir()) / ".leadify_server_config.json")
+        except:
+            pass
+        
+        # 4. Aktuelles Verzeichnis
+        locations.append(Path(".leadify_server_config.json"))
+        
+        # Verwende den ersten schreibbaren Pfad
+        for location in locations:
+            try:
+                # Teste ob wir in dieses Verzeichnis schreiben können
+                location.parent.mkdir(parents=True, exist_ok=True)
+                # Wenn die Datei existiert, verwende sie
+                if location.exists():
+                    print(f"Config-Datei gefunden: {location}")
+                    return location
+                # Sonst teste ob wir schreiben können
+                test_file = location.parent / ".test_write"
+                test_file.write_text("test")
+                test_file.unlink()
+                print(f"Config-Pfad gewählt: {location}")
+                return location
+            except Exception as e:
+                print(f"Pfad {location} nicht verfügbar: {e}")
+                continue
+        
+        # Fallback
+        return locations[-1] if locations else Path(".leadify_server_config.json")
+    except Exception as e:
+        print(f"Fehler beim Ermitteln des Config-Pfades: {e}")
+        return Path(".leadify_server_config.json")
+
+
+def load_server_ip():
+    """Lädt die gespeicherte Server-IP-Adresse aus der Konfigurationsdatei."""
+    try:
+        config_file = get_config_file_path()
+        print(f"Versuche IP zu laden von: {config_file}")
+        if config_file and config_file.exists():
+            with open(config_file, 'r') as f:
+                config = json.load(f)
+                ip = config.get('server_ip')
+                print(f"IP geladen: {ip}")
+                return ip
+    except Exception as e:
+        print(f"Fehler beim Laden der Server-IP: {e}")
+        import traceback
+        traceback.print_exc()
+    return None
+
+
+def save_server_ip(ip_address: str):
+    """Speichert die Server-IP-Adresse in der Konfigurationsdatei."""
+    try:
+        config_file = get_config_file_path()
+        print(f"Versuche IP zu speichern in: {config_file}")
+        if config_file:
+            # Stelle sicher, dass das Verzeichnis existiert
+            config_file.parent.mkdir(parents=True, exist_ok=True)
+            
+            with open(config_file, 'w') as f:
+                json.dump({'server_ip': ip_address}, f)
+            
+            print(f"IP erfolgreich gespeichert: {ip_address}")
+            
+            # Verifiziere, dass die Datei geschrieben wurde
+            if config_file.exists():
+                with open(config_file, 'r') as f:
+                    verify = json.load(f)
+                    if verify.get('server_ip') == ip_address:
+                        print("IP-Speicherung verifiziert")
+                        return True
+            return True
+    except Exception as e:
+        print(f"Fehler beim Speichern der Server-IP: {e}")
+        import traceback
+        traceback.print_exc()
+    return False
+
+
+def set_api_base_url(ip_address: str, port: int = 8000):
+    """Setzt die API-Basis-URL basierend auf der IP-Adresse."""
+    global API_BASE_URL, _client
+    # Entferne http:// oder https:// falls vorhanden
+    ip_clean = ip_address.replace("http://", "").replace("https://", "").strip()
+    # Entferne Port falls in IP enthalten
+    if ":" in ip_clean:
+        ip_clean = ip_clean.split(":")[0]
+    
+    API_BASE_URL = f"http://{ip_clean}:{port}/api"
+    _client = httpx.Client(base_url=API_BASE_URL, timeout=30.0)
+    print(f"API_BASE_URL gesetzt auf: {API_BASE_URL}")
+
+
+def get_client():
+    """Gibt den HTTP-Client zurück. Initialisiert ihn bei Bedarf."""
+    global _client
+    if _client is None:
+        # Standard-IP verwenden
+        set_api_base_url("127.0.0.1")
+    return _client
+
+
+def is_server_configured():
+    """Prüft, ob eine Server-IP bereits konfiguriert wurde."""
+    try:
+        return load_server_ip() is not None
+    except:
+        return False
+
+
+# ============================================================================
+# DEVICE-ID UND TOKEN MANAGEMENT (Client-seitig)
+# ============================================================================
+
+import uuid
+import platform
+
+
+def get_device_file_path(filename):
+    """Gibt den Pfad zu einer geräte-spezifischen Datei zurück."""
+    try:
+        locations = []
+        
+        # 1. App-spezifisches Datenverzeichnis (Android-freundlich)
+        if 'FLET_APP_STORAGE_DATA' in os.environ:
+            locations.append(Path(os.environ['FLET_APP_STORAGE_DATA']) / filename)
+        
+        # 2. Home-Verzeichnis
+        try:
+            locations.append(Path.home() / f".leadify_{filename}")
+        except:
+            pass
+        
+        # 3. Temporäres Verzeichnis
+        try:
+            import tempfile
+            locations.append(Path(tempfile.gettempdir()) / f".leadify_{filename}")
+        except:
+            pass
+        
+        # 4. Aktuelles Verzeichnis
+        locations.append(Path(f".leadify_{filename}"))
+        
+        # Verwende den ersten verfügbaren/schreibbaren Pfad
+        for location in locations:
+            try:
+                location.parent.mkdir(parents=True, exist_ok=True)
+                if location.exists():
+                    return location
+                # Teste Schreibbarkeit
+                test_file = location.parent / ".test_write"
+                test_file.write_text("test")
+                test_file.unlink()
+                return location
+            except:
+                continue
+        
+        return locations[-1] if locations else Path(f".leadify_{filename}")
+    except Exception as e:
+        print(f"Fehler beim Ermitteln des Device-Pfades: {e}")
+        return Path(f".leadify_{filename}")
+
+
+def get_or_create_device_id():
+    """Generiert oder lädt die eindeutige Device-ID für dieses Gerät."""
+    device_file = get_device_file_path("device_id.json")
+    
+    try:
+        if device_file.exists():
+            with open(device_file, 'r') as f:
+                data = json.load(f)
+                device_id = data.get('device_id')
+                if device_id:
+                    print(f"Device-ID geladen: {device_id[:8]}...")
+                    return device_id
+    except Exception as e:
+        print(f"Fehler beim Laden der Device-ID: {e}")
+    
+    # Neue Device-ID generieren
+    device_id = str(uuid.uuid4())
+    
+    try:
+        device_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(device_file, 'w') as f:
+            json.dump({'device_id': device_id}, f)
+        print(f"✅ Neue Device-ID erstellt: {device_id[:8]}...")
+    except Exception as e:
+        print(f"⚠️ Device-ID konnte nicht gespeichert werden: {e}")
+    
+    return device_id
+
+
+def get_device_name():
+    """Generiert einen lesbaren Gerätenamen."""
+    try:
+        system = platform.system()
+        node = platform.node() or "Unbekannt"
+        
+        if system == "Windows":
+            return f"Windows – {node}"
+        elif system == "Darwin":
+            return f"macOS – {node}"
+        elif system == "Linux":
+            # Android wird als Linux erkannt
+            if 'ANDROID_ROOT' in os.environ or 'ANDROID_DATA' in os.environ:
+                model = os.environ.get('ANDROID_MODEL', 'Android-Gerät')
+                return f"Android – {model}"
+            return f"Linux – {node}"
+        else:
+            return f"{system} – {node}"
+    except:
+        return "Unbekanntes Gerät"
+
+
+def save_session(token, device_id, email):
+    """Speichert Session-Daten lokal (geräte-spezifisch)."""
+    session_file = get_device_file_path("session.json")
+    data = {
+        'token': token,
+        'device_id': device_id,
+        'email': email,
+        'created_at': datetime.now().isoformat()
+    }
+    
+    try:
+        session_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(session_file, 'w') as f:
+            json.dump(data, f)
+        print(f"✅ Session gespeichert für {email}")
+        return True
+    except Exception as e:
+        print(f"⚠️ Session konnte nicht gespeichert werden: {e}")
+        return False
+
+
+def load_session():
+    """Lädt Session-Daten aus lokalem Speicher."""
+    session_file = get_device_file_path("session.json")
+    
+    try:
+        if session_file.exists():
+            with open(session_file, 'r') as f:
+                data = json.load(f)
+                print(f"Session geladen: {data.get('email', 'unbekannt')}")
+                return data
+    except Exception as e:
+        print(f"⚠️ Session konnte nicht geladen werden: {e}")
+    
+    return None
+
+
+def clear_session():
+    """Löscht lokale Session-Daten."""
+    session_file = get_device_file_path("session.json")
+    
+    try:
+        if session_file.exists():
+            os.remove(session_file)
+            print("Session gelöscht")
+            return True
+    except Exception as e:
+        print(f"⚠️ Session konnte nicht gelöscht werden: {e}")
+    
+    return False
+
+
+# Client-Initialisierung - IMMER sicherstellen, dass _client initialisiert ist
+try:
+    saved_ip = load_server_ip()
+    if saved_ip:
+        set_api_base_url(saved_ip)
+    else:
+        _client = httpx.Client(base_url=API_BASE_URL, timeout=30.0)
+except Exception as e:
+    print(f"Fehler bei der Client-Initialisierung: {e}")
+    # Fallback: Initialisiere mit Standard-URL
+    try:
+        _client = httpx.Client(base_url=API_BASE_URL, timeout=30.0)
+    except Exception as e2:
+        print(f"Kritischer Fehler bei Client-Initialisierung: {e2}")
+        _client = None
 
 
 # ============================================================================
@@ -54,34 +358,99 @@ LeadKommentar = DictProxy
 # ============================================================================
 
 class AuthClient:
-    """Ersetzt AuthManager – ruft /api/auth/* auf."""
+    """Ersetzt AuthManager – ruft /api/auth/* auf und verwaltet Sessions lokal."""
+    
+    def __init__(self):
+        self.device_id = get_or_create_device_id()
+        self.device_name = get_device_name()
+        print(f"🔧 AuthClient initialisiert - {self.device_name} ({self.device_id[:8]}...)")
 
     def register_user(self, email: str, password: str):
-        r = _client.post("/auth/register", json={"email": email, "password": password})
-        data = r.json()
-        return data["success"], data["message"], data.get("token")
+        try:
+            r = _client.post("/auth/register", json={"email": email, "password": password})
+            data = r.json()
+            return data["success"], data["message"], data.get("token")
+        except Exception as e:
+            print(f"Fehler bei register_user: {e}")
+            return False, f"Verbindungsfehler: {str(e)}", None
 
     def login_user(self, email: str, password: str):
-        r = _client.post("/auth/login", json={"email": email, "password": password})
-        data = r.json()
-        return data["success"], data["message"], data.get("user")
+        try:
+            r = _client.post("/auth/login", json={
+                "email": email,
+                "password": password,
+                "device_id": self.device_id,
+                "device_name": self.device_name
+            })
+            data = r.json()
+            
+            if data["success"] and data.get("result"):
+                result = data["result"]
+                # Session lokal speichern
+                save_session(result["token"], result["device_id"], email)
+                return data["success"], data["message"], result.get("user")
+            
+            return data["success"], data["message"], None
+        except Exception as e:
+            print(f"Fehler bei login_user: {e}")
+            return False, f"Verbindungsfehler: {str(e)}", None
 
     def check_auto_login(self):
-        r = _client.post("/auth/auto-login")
-        data = r.json()
-        return data["is_logged_in"], data.get("user"), data["message"]
+        try:
+            # Lokale Session laden
+            session = load_session()
+            
+            if not session or not session.get('token') or not session.get('device_id'):
+                print("ℹ️ Keine lokale Session gefunden")
+                return False, None, "Keine Session gefunden"
+            
+            # Session beim Server validieren
+            r = _client.post("/auth/auto-login", json={
+                "token": session['token'],
+                "device_id": session['device_id']
+            })
+            data = r.json()
+            
+            if not data["is_logged_in"]:
+                # Session ungültig - lokal löschen
+                clear_session()
+            
+            return data["is_logged_in"], data.get("user"), data["message"]
+        except Exception as e:
+            print(f"Fehler bei check_auto_login: {e}")
+            return False, None, "Keine Verbindung zum Server"
 
     def logout(self):
-        _client.post("/auth/logout")
+        try:
+            # Lokale Session laden
+            session = load_session()
+            
+            if session and session.get('token') and session.get('device_id'):
+                # Server-seitig abmelden
+                _client.post("/auth/logout", json={
+                    "token": session['token'],
+                    "device_id": session['device_id']
+                })
+            
+            # Lokal löschen
+            clear_session()
+        except Exception as e:
+            print(f"Fehler bei logout: {e}")
+            # Trotzdem lokal löschen
+            clear_session()
 
     def change_password(self, benutzer_id: int, old_password: str, new_password: str):
-        r = _client.put("/auth/change-password", json={
-            "benutzer_id": benutzer_id,
-            "old_password": old_password,
-            "new_password": new_password,
-        })
-        data = r.json()
-        return data["success"], data["message"]
+        try:
+            r = _client.put("/auth/change-password", json={
+                "benutzer_id": benutzer_id,
+                "old_password": old_password,
+                "new_password": new_password,
+            })
+            data = r.json()
+            return data["success"], data["message"]
+        except Exception as e:
+            print(f"Fehler bei change_password: {e}")
+            return False, f"Verbindungsfehler: {str(e)}"
 
 
 # ============================================================================
