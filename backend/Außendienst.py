@@ -128,7 +128,6 @@ class AussendienstManager:
             if bild_result:
                 bild_id = self.db.last_insert_id
             else:
-                print("[WARNING] Konnte Bild nicht speichern, verwende bild_id = 0")
                 bild_id = 0
         
         # Lead erstellen - lead_id ist Auto-Increment

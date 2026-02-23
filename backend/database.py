@@ -29,9 +29,7 @@ class Database:
                 )
                 self.cursor = self.conn.cursor(dictionary=True)
                 self.initialized = True
-                print("[OK] Datenbankverbindung erfolgreich hergestellt.")
             except mariadb.Error as e:
-                print(f"[ERROR] Fehler beim Verbinden mit MariaDB: {e}")
                 sys.exit(1)
 
 
@@ -45,7 +43,6 @@ class Database:
             self.last_insert_id = self.cursor.insert_id
             return self.cursor
         except mariadb.Error as e:
-            print(f"[ERROR] SQL-Fehler: {e}")
             return None
 
     # Nur Daten abrufen (SELECT)
@@ -56,7 +53,6 @@ class Database:
             result = self.cursor.fetchall()
             return result
         except mariadb.Error as e:
-            print(f"[ERROR] SQL-Fehler: {e}")
             return []
 
     def fetch_one(self, sql, params=None):
@@ -66,7 +62,6 @@ class Database:
             result = self.cursor.fetchone()
             return result
         except mariadb.Error as e:
-            print(f"[ERROR] SQL-Fehler: {e}")
             return None
 
     def reconnect(self):
@@ -82,10 +77,8 @@ class Database:
                 port=self.port
             )
             self.cursor = self.conn.cursor(dictionary=True)
-            print("[OK] Verbindung erfolgreich wiederhergestellt.")
             return True
         except mariadb.Error as e:
-            print(f"[ERROR] Reconnect fehlgeschlagen: {e}")
             return False
 
 
@@ -103,5 +96,4 @@ class Database:
             self.cursor.close()
         if hasattr(self, "conn") and self.conn: #<- hasattr prüft ob cursor und conn im Objekt existiert
             self.conn.close()
-        print("[OK] Verbindung geschlossen.")
 

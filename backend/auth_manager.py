@@ -12,7 +12,6 @@ class AuthManager:
     
     def __init__(self, db):
         self.db = db
-        print(f"🔧 AuthManager initialisiert")
     
     def register_user(self, email, password):
         """
@@ -44,7 +43,6 @@ class AuthManager:
         )
         
         if result:
-            print(f"✅ Benutzer registriert: {email} (wartet auf Freigabe)")
             return True, "Registrierung erfolgreich! Warte auf Admin-Freigabe.", None
         
         return False, "Fehler bei der Registrierung.", None
@@ -74,7 +72,6 @@ class AuthManager:
         try:
             password_correct = bcrypt.checkpw(password.encode(), user['passwort_hash'].encode())
         except (ValueError, AttributeError) as e:
-            print(f"⚠️ Ungültiger Passwort-Hash für {email}: {e}")
             return False, "E-Mail oder Passwort falsch.", None
         
         if not password_correct:
@@ -109,7 +106,6 @@ class AuthManager:
                    WHERE session_id = ?""",
                 (token, existing_session['session_id'])
             )
-            print(f"🔄 Session aktualisiert für {email} auf {device_name}")
         else:
             # Neue Session erstellen
             self.db.query(
@@ -117,7 +113,6 @@ class AuthManager:
                    VALUES (?, ?, ?, ?, NOW(), NOW())""",
                 (user['benutzer_id'], token, device_id, device_name)
             )
-            print(f"✅ Neue Session erstellt für {email} auf {device_name}")
         
         # User-Daten + Token + Device-ID zurückgeben
         result = {
@@ -140,7 +135,6 @@ class AuthManager:
         Returns: (is_logged_in: bool, user_data: dict or None, message: str)
         """
         if not token or not device_id:
-            print("ℹ️ Token oder Device-ID fehlt")
             return False, None, "Token oder Device-ID fehlt."
         
         # Session in Datenbank prüfen (nur für dieses Gerät!)
@@ -168,7 +162,6 @@ class AuthManager:
                 'nachname': session['nachname'],
                 'rolle_id': session['rolle_id']
             }
-            print(f"✅ Auto-Login erfolgreich: {session['email']}")
             return True, user_data, "Automatisch angemeldet."
         
         # Prüfen ob nur die Genehmigung fehlt
@@ -181,10 +174,8 @@ class AuthManager:
         )
         
         if pending:
-            print(f"⏳ Benutzer {pending['email']} wartet auf Admin-Freigabe")
             return False, None, "Warte noch auf Admin-Freigabe."
         
-        print("❌ Token ungültig oder abgelaufen")
         return False, None, "Token ungültig. Bitte neu anmelden."
     
     def logout(self, token, device_id):
@@ -195,7 +186,6 @@ class AuthManager:
                 "DELETE FROM sessions WHERE token = ? AND device_id = ?",
                 (token, device_id)
             )
-            print(f"✅ Logout erfolgreich für Device-ID {device_id[:8]}...")
             return True, "Erfolgreich abgemeldet."
         return False, "Token oder Device-ID fehlt."
     
@@ -205,7 +195,6 @@ class AuthManager:
             "DELETE FROM sessions WHERE benutzer_id = ?",
             (benutzer_id,)
         )
-        print(f"✅ Alle Geräte abgemeldet für Benutzer-ID {benutzer_id}")
         return True, f"Alle Geräte abgemeldet."
     
     def get_active_sessions(self, benutzer_id, current_device_id=None):
@@ -226,7 +215,6 @@ class AuthManager:
             "DELETE FROM sessions WHERE session_id = ?",
             (session_id,)
         )
-        print(f"✅ Session {session_id} widerrufen")
     
     def change_password(self, benutzer_id, old_password, new_password):
         """Ändert das Passwort eines Benutzers"""
@@ -253,7 +241,6 @@ class AuthManager:
                 (hashed_password.decode('utf-8'), benutzer_id)
             )
             
-            print(f"✅ Passwort geändert für Benutzer-ID {benutzer_id}")
             return True, "Passwort erfolgreich geändert"
             
         except Exception as e:

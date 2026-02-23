@@ -27,7 +27,6 @@ class AdminMenuManager:
             result = self.db.fetch_one(sql)
             return result.get('count', 0) if result else 0
         except Exception as e:
-            print(f"[ERROR] Fehler beim Zählen vorgemerkter Leads: {e}")
             return 0
     
     def get_pending_users_count(self):
@@ -47,7 +46,6 @@ class AdminMenuManager:
             result = self.db.fetch_one(sql)
             return result.get('count', 0) if result else 0
         except Exception as e:
-            print(f"[ERROR] Fehler beim Zählen ausstehender Nutzer: {e}")
             return 0
     
     def get_notification_count(self):

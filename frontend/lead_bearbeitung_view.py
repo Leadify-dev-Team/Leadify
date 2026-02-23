@@ -329,7 +329,7 @@ class LeadDetailView:
                     ft.Text(f"Telefon: {self.lead.kunde_telefon}"),
                     ft.Divider(height=10),
                     ft.Text(f"Produktgruppe: {self.lead.produktgruppe_name}"),
-                    ft.Text(f"Produkt: {self.lead.produkt_name} ({self.lead.produktzustand_name})"),
+                    ft.Text(f"Produkt: {self.lead.produkt_name}" + (f" ({self.lead.produktzustand_name})" if self.lead.produktzustand_name else "")),
                     ft.Text(f"Status: {self.lead.status_name}"),
                     ft.Text(f"Erfasst von: {self.lead.erfasser_name}"),
                     ft.Text(f"Datum: {self.lead.datum_erfasst}"),

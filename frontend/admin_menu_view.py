@@ -217,20 +217,20 @@ class AdminMenuView:
             await self.page.close_end_drawer()
             self.page.update()
         
-        def toggle_dark_mode(e):
+        async def toggle_dark_mode(e):
             # Wechsle page.theme_mode statt lokale dark_mode Variable
             new_theme = ft.ThemeMode.LIGHT if self.page.theme_mode == ft.ThemeMode.DARK else ft.ThemeMode.DARK
             self.page.theme_mode = new_theme
             self.page.update()
-            close_drawer(e)
+            await close_drawer(e)
             self.render()  # Neu rendern mit neuen Farben
         
-        def change_password(e):
-            close_drawer(e)
+        async def change_password(e):
+            await close_drawer(e)
             self._show_placeholder("Passwort ändern")
         
-        def logout(e):
-            close_drawer(e)
+        async def logout(e):
+            await close_drawer(e)
             self._logout()
         
         # Dark Mode Switch erstellen

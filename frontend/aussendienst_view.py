@@ -38,7 +38,6 @@ class SearchField:
         """Filtert Optionen basierend auf Eingabe"""
         search_text = e.control.value.lower() if e.control.value else ""
         
-        print(f"[DEBUG SearchField] Text geändert: '{search_text}'")
         
         if not search_text:
             self.suggestions_list.visible = False
@@ -58,7 +57,6 @@ class SearchField:
                     break
             
             if exact_match:
-                print(f"[DEBUG SearchField] Exakte Übereinstimmung gefunden: {exact_match['text']}")
                 # Exakte Übereinstimmung gefunden - automatisch auswählen
                 self._select_option(exact_match['key'], exact_match['text'])
             else:
@@ -84,7 +82,6 @@ class SearchField:
     
     def _select_option(self, key: str, text: str):
         """Wählt eine Option aus"""
-        print(f"[DEBUG SearchField] Option ausgewählt: {text} (key={key})")
         self.text_field.value = text
         self.selected_value = key
         self.selected_text = text
@@ -96,7 +93,6 @@ class SearchField:
     @property
     def value(self):
         """Gibt die ausgewählte ID zurück"""
-        print(f"[DEBUG SearchField] .value aufgerufen -> {self.selected_value}")
         return self.selected_value
     
     @property
@@ -179,7 +175,6 @@ class AussendienstView:
                 )
             )
         except Exception as ex:
-            print(f"[DEBUG] FEHLER in render(): {ex}")
             import traceback
             traceback.print_exc()
             self.page.add(ft.Text(f"Fehler beim Laden: {str(ex)}", color="red"))
@@ -305,7 +300,6 @@ class AussendienstView:
     
     def _build_step_1_kundendaten(self):
         """Schritt 1: Kundendaten eingeben"""
-        print("\n[DEBUG] ===== Schritt 1: Kundendaten =====")
         
         # Firma SearchField erstellen (nur beim ersten Mal)
         if self.firma_dropdown is None:
@@ -349,7 +343,6 @@ class AussendienstView:
     
     def _build_step_2_produktinformationen(self):
         """Schritt 2: Produktinformationen eingeben"""
-        print("\n[DEBUG] ===== Schritt 2: Produktinformationen =====")
         
         # Produktgruppe Dropdown erstellen (nur beim ersten Mal)
         if self.produktgruppe_dropdown is None:
@@ -410,7 +403,6 @@ class AussendienstView:
     
     def _build_step_3_lead_details(self):
         """Schritt 3: Lead-Details eingeben"""
-        print("\n[DEBUG] ===== Schritt 3: Lead-Details =====")
         
         # Quelle Dropdown erstellen (nur beim ersten Mal)
         if self.quelle_dropdown is None:
@@ -459,7 +451,6 @@ class AussendienstView:
     
     def _build_step_4_beschreibung(self):
         """Schritt 4: Beschreibung eingeben"""
-        print("\n[DEBUG] ===== Schritt 4: Beschreibung =====")
         
         # Beschreibung TextField erstellen (nur beim ersten Mal)
         if self.beschreibung_field is None:
@@ -570,15 +561,12 @@ class AussendienstView:
             return
         
         self.selected_firma = int(firma_id)
-        print(f"[DEBUG] Firma ausgewählt: {self.selected_firma}")
         
         # Ansprechpartner automatisch laden
         try:
-            print(f"[DEBUG] Lade Ansprechpartner für Firma-ID: {self.selected_firma}")
             
             # Ansprechpartner laden - filtert nach firma_id
             ansprechpartner = self.manager.get_ansprechpartner_by_firma(self.selected_firma)
-            print(f"[DEBUG] Ansprechpartner gefunden: {len(ansprechpartner)}")
             
             if ansprechpartner:
                 # Dropdown-Optionen füllen
@@ -594,17 +582,14 @@ class AussendienstView:
                 self.ansprechpartner_dropdown.value = None
                 self.ansprechpartner_dropdown.hint_text = "Bitte wählen"
                 self.ansprechpartner_dropdown.error_text = None
-                print(f"[DEBUG] {len(ansprechpartner)} Ansprechpartner geladen, bitte auswählen")
             else:
                 self.ansprechpartner_dropdown.options = []
                 self.ansprechpartner_dropdown.value = None
                 self.ansprechpartner_dropdown.error_text = "Keine Ansprechpartner für diese Firma gefunden"
-                print(f"[DEBUG] Keine Ansprechpartner für Firma {self.selected_firma}")
             
             self.page.update()
             
         except Exception as e:
-            print(f"[DEBUG] FEHLER beim Laden der Ansprechpartner: {e}")
             import traceback
             traceback.print_exc()
             self.ansprechpartner_dropdown.error_text = f"Fehler: {str(e)}"
@@ -619,7 +604,6 @@ class AussendienstView:
         self.selected_produktgruppe = int(produktgruppe_id)
         
         # DEBUG
-        print(f"[DEBUG] Produktgruppe ausgewählt: {self.selected_produktgruppe}")
         
         # Prüfe ob Serviceleistungen ausgewählt wurden (verstecke Zustand-Feld)
         produktgruppe_text = self.produktgruppe_dropdown.value
@@ -629,17 +613,13 @@ class AussendienstView:
             self.zustand_dropdown.visible = False
             self.zustand_dropdown.value = None  # Wert zurücksetzen
             self.selected_zustand = None
-            print("[DEBUG] Serviceleistungen ausgewählt - Zustand-Feld ausgeblendet")
         else:
             # Zustand-Feld anzeigen für alle anderen Produktgruppen
             self.zustand_dropdown.visible = True
-            print("[DEBUG] Zustand-Feld angezeigt")
         
         # Produkte laden
         try:
             produkte = self.manager.get_produkte_by_gruppe(self.selected_produktgruppe)
-            print(f"[DEBUG] Produkte geladen: {len(produkte)} gefunden")
-            print(f"[DEBUG] Erste Produkte: {produkte[:3] if produkte else 'KEINE'}")
             
             if produkte:
                 # Filtere Produkte basierend auf der Produktgruppe
@@ -652,11 +632,9 @@ class AussendienstView:
                     if "Stapler" in selected_option.text:
                         # Nur Produkte mit IDs 1-4
                         filtered_produkte = [p for p in produkte if 1 <= p['produkt_id'] <= 4]
-                        print(f"[DEBUG] Stapler ausgewählt - gefiltert auf IDs 1-4: {len(filtered_produkte)} Produkte")
                     elif "Industriegeräte" in selected_option.text or "Industrieger" in selected_option.text:
                         # Nur Produkte mit IDs 5-8
                         filtered_produkte = [p for p in produkte if 5 <= p['produkt_id'] <= 8]
-                        print(f"[DEBUG] Industriegeräte ausgewählt - gefiltert auf IDs 5-8: {len(filtered_produkte)} Produkte")
                 
                 self.produkt_dropdown.options = [
                     ft.DropdownOption(key=str(p['produkt_id']), text=p['produkt'])
@@ -669,7 +647,6 @@ class AussendienstView:
                 self.produkt_dropdown.value = None
                 self.produkt_dropdown.error_text = "Keine Produkte gefunden"
         except Exception as e:
-            print(f"[DEBUG] FEHLER beim Laden von Produkten: {e}")
             self.produkt_dropdown.error_text = f"Fehler: {str(e)}"
         
         self.page.update()
@@ -677,10 +654,6 @@ class AussendienstView:
     def _save_lead(self):
         """Lead speichern - mit Validierung"""
         
-        print("[DEBUG] ===== _save_lead() aufgerufen! =====")
-        print(f"[DEBUG] firma: {self.firma_dropdown.value}")
-        print(f"[DEBUG] produkt: {self.produkt_dropdown.value}")
-        print(f"[DEBUG] bearbeiter: {self.bearbeiter_dropdown.value}")
         
         try:
             # Validierung
@@ -743,7 +716,6 @@ class AussendienstView:
                 self.page.show_dialog(error_dialog)
                 return
             
-            print("[DEBUG] Validierung erfolgreich - starte Lead-Erstellung")
             
             # Lead erstellen - Zustand auf ID 3 setzen wenn nicht sichtbar (Serviceleistungen)
             zustand_id = int(self.zustand_dropdown.value) if self.zustand_dropdown.visible and self.zustand_dropdown.value else 3
@@ -759,7 +731,6 @@ class AussendienstView:
                 beschreibung=self.beschreibung_field.value
             )
             
-            print(f"[DEBUG] Lead-Erstellung abgeschlossen: ID={lead_id}")
             
             if lead_id:
                 # Erfolgs-Dialog
@@ -781,7 +752,6 @@ class AussendienstView:
                 raise Exception("Lead konnte nicht erstellt werden")
         
         except Exception as ex:
-            print(f"[DEBUG] FEHLER in _save_lead: {ex}")
             import traceback
             traceback.print_exc()
             
@@ -801,7 +771,6 @@ class AussendienstView:
     
     def _reset_form(self):
         """Setzt alle Formularfelder und Variablen zurück"""
-        print("[DEBUG] Formular wird zurückgesetzt...")
         
         # Schritt zurücksetzen
         self.current_step = 1
@@ -825,7 +794,6 @@ class AussendienstView:
         self.bearbeiter_dropdown = None
         self.beschreibung_field = None
         
-        print("[DEBUG] Formular erfolgreich zurückgesetzt")
     
     def _go_back_to_menu(self):
         """Kehrt zum Hauptmenü zurück"""

@@ -47,7 +47,6 @@ class LeadLoeschenManager:
             results = self.db.fetch_all(sql)
             return results if results else []
         except Exception as e:
-            print(f"[ERROR] Fehler beim Laden der Leads zum Löschen: {e}")
             return []
     
     def delete_leads(self, lead_ids: list):
@@ -83,5 +82,4 @@ class LeadLoeschenManager:
             return (True, deleted_count, None)
         except Exception as e:
             error_msg = f"Fehler beim Löschen: {str(e)}"
-            print(f"[ERROR] {error_msg}")
             return (False, 0, error_msg)

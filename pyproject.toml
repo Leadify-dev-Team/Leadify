@@ -28,7 +28,7 @@ module = "main"
 
 [tool.flet.app.icons]
 # App Icons
-image = "src/assets/icon.png"
+image = "src/assets/favicon.png"
 
 [tool.flet.app.android]
 # Android-spezifische Einstellungen

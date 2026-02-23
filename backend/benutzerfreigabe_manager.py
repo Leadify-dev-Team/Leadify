@@ -29,7 +29,6 @@ class BenutzerfreigabeManager:
             """
             return self.db.fetch_all(sql)
         except Exception as e:
-            print(f"[ERROR] Fehler beim Laden der ausstehenden Benutzer: {e}")
             return []
     
     def approve_user(self, user_id: int):
@@ -47,7 +46,6 @@ class BenutzerfreigabeManager:
             self.db.query(sql, (user_id,))
             return True
         except Exception as e:
-            print(f"[ERROR] Fehler beim Freigeben des Benutzers: {e}")
             return False
     
     def reject_user(self, user_id: int):
@@ -65,5 +63,4 @@ class BenutzerfreigabeManager:
             self.db.query(sql, (user_id,))
             return True
         except Exception as e:
-            print(f"[ERROR] Fehler beim Ablehnen des Benutzers: {e}")
             return False

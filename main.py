@@ -67,19 +67,17 @@ class AppController:
             if hasattr(self.page, 'client_storage'):
                 ip = self.page.client_storage.get("leadify_server_ip")
                 if ip:
-                    print(f"IP aus Client Storage geladen: {ip}")
                     return ip
         except Exception as e:
-            print(f"Fehler beim Laden aus Client Storage: {e}")
+            pass
         
         # Fallback: Aus Datei laden
         try:
             ip = load_server_ip()
             if ip:
-                print(f"IP aus Datei geladen: {ip}")
                 return ip
         except Exception as e:
-            print(f"Fehler beim Laden aus Datei: {e}")
+            pass
         
         return None
     
@@ -91,18 +89,16 @@ class AppController:
         try:
             if hasattr(self.page, 'client_storage'):
                 self.page.client_storage.set("leadify_server_ip", ip_address)
-                print(f"IP in Client Storage gespeichert: {ip_address}")
                 success = True
         except Exception as e:
-            print(f"Fehler beim Speichern in Client Storage: {e}")
+            pass
         
         # Zusätzlich in Datei speichern (als Backup)
         try:
             if save_server_ip(ip_address):
-                print(f"IP in Datei gespeichert: {ip_address}")
                 success = True
         except Exception as e:
-            print(f"Fehler beim Speichern in Datei: {e}")
+            pass
         
         return success
     
@@ -111,19 +107,23 @@ class AppController:
         return self._load_server_ip() is not None
     
     def _load_theme(self):
-        """Lädt gespeichertes Theme aus Datei"""
+        """Lädt gespeichertes Theme aus Datei, Fallback: Systemeinstellung"""
         theme_file = Path.home() / ".leadify_theme.json"
         try:
             if theme_file.exists():
                 with open(theme_file, 'r') as f:
                     theme_data = json.load(f)
-                    is_dark = theme_data.get('dark_mode', False)
-                    self.page.theme_mode = ft.ThemeMode.DARK if is_dark else ft.ThemeMode.LIGHT
+                    is_dark = theme_data.get('dark_mode', None)
+                    if is_dark is None:
+                        # Keine gespeicherte Präferenz → Systemeinstellung verwenden
+                        self.page.theme_mode = ft.ThemeMode.SYSTEM
+                    else:
+                        self.page.theme_mode = ft.ThemeMode.DARK if is_dark else ft.ThemeMode.LIGHT
             else:
-                # Standard: Light Mode
-                self.page.theme_mode = ft.ThemeMode.LIGHT
+                # Keine gespeicherte Datei → Systemeinstellung verwenden
+                self.page.theme_mode = ft.ThemeMode.SYSTEM
         except:
-            self.page.theme_mode = ft.ThemeMode.LIGHT
+            self.page.theme_mode = ft.ThemeMode.SYSTEM
     
     def _save_theme(self, is_dark: bool):
         """Speichert Theme-Präferenz"""
@@ -132,7 +132,7 @@ class AppController:
             with open(theme_file, 'w') as f:
                 json.dump({'dark_mode': is_dark}, f)
         except Exception as e:
-            print(f"Fehler beim Speichern des Themes: {e}")
+            pass
     
     def _toggle_theme(self, e):
         """Wechselt zwischen Dark und Light Mode"""
@@ -146,14 +146,12 @@ class AppController:
         try:
             # Zuerst prüfen, ob Server-IP konfiguriert ist
             if not self._is_server_configured():
-                print("Keine Server-IP konfiguriert - zeige IP-Eingabe")
                 self.show_server_ip_screen()
                 return
             
             # Server-IP laden und setzen
             saved_ip = self._load_server_ip()
             if saved_ip:
-                print(f"Setze API-URL auf: {saved_ip}")
                 set_api_base_url(saved_ip)
                 # Auth-Client neu initialisieren
                 self.auth = AuthClient()
@@ -172,7 +170,6 @@ class AppController:
             else:
                 self.show_login_screen()
         except Exception as e:
-            print(f"Fehler beim App-Start: {e}")
             import traceback
             traceback.print_exc()
             # Fallback: Zeige IP-Konfiguration
@@ -262,8 +259,11 @@ class AppController:
         self.page.update()
         
         # Profil-Drawer (rechts) mit Abmelden und Passwort ändern
-        # Theme-Switch basierend auf aktuellem Modus
-        is_dark_mode = self.page.theme_mode == ft.ThemeMode.DARK
+        # Theme-Switch basierend auf aktuellem Modus (inkl. Systemeinstellung)
+        if self.page.theme_mode == ft.ThemeMode.SYSTEM:
+            is_dark_mode = self.page.platform_brightness == ft.Brightness.DARK
+        else:
+            is_dark_mode = self.page.theme_mode == ft.ThemeMode.DARK
         
         profile_controls = [
             ft.Container(height=10),
@@ -703,14 +703,10 @@ class AppController:
     
     def show_server_ip_screen(self):
         """Zeigt den IP-Adress-Eingabebildschirm für Server-Konfiguration"""
-        try:
-            self.page.clean()
-        except Exception as e:
-            print(f"Fehler beim Leeren der Seite: {e}")
+        self.page.clean()
         
         # Lade gespeicherte IP falls vorhanden
         saved_ip = self._load_server_ip()
-        print(f"Gespeicherte IP beim Laden des IP-Screens: {saved_ip}")
         
         # Breite für mobile Geräte anpassen
         field_width = min(400, self.page.width * 0.9) if self.page.width else 400
@@ -735,7 +731,6 @@ class AppController:
             ip_address = ip_field.value
             port = port_field.value
             
-            print(f"Versuche IP zu speichern: {ip_address}")
             
             if not ip_address:
                 status_text.value = "Bitte eine IP-Adresse eingeben."
@@ -755,9 +750,7 @@ class AppController:
                 return
             
             # IP-Adresse speichern und API-URL setzen
-            print(f"Rufe _save_server_ip auf mit: {ip_address}")
             if self._save_server_ip(ip_address):
-                print("IP erfolgreich gespeichert, setze API-URL")
                 set_api_base_url(ip_address, port_number)
                 status_text.value = "Server-Konfiguration gespeichert!"
                 status_text.color = "green"
@@ -771,10 +764,8 @@ class AppController:
                 self.auth = AuthClient()
                 
                 # Weiter zum Login
-                print("Weiterleitung zum Login")
                 self.show_login_screen()
             else:
-                print("Fehler beim Speichern der IP")
                 status_text.value = "Fehler beim Speichern der Konfiguration."
                 status_text.color = "red"
                 self.page.update()
@@ -806,7 +797,7 @@ class AppController:
             )
             self.page.update()
         except Exception as e:
-            print(f"Fehler beim Anzeigen des IP-Screens: {e}")
+            pass
     
     def show_server_connection_error(self):
         """Zeigt Fehlerbildschirm bei Server-Verbindungsproblemen"""
@@ -1104,7 +1095,10 @@ class AppController:
         self.page.padding = 0
         
         # Profil-Drawer (rechts) erstellen
-        is_dark_mode = self.page.theme_mode == ft.ThemeMode.DARK
+        if self.page.theme_mode == ft.ThemeMode.SYSTEM:
+            is_dark_mode = self.page.platform_brightness == ft.Brightness.DARK
+        else:
+            is_dark_mode = self.page.theme_mode == ft.ThemeMode.DARK
         
         profile_controls = [
             ft.Container(height=10),
@@ -1161,7 +1155,7 @@ class AppController:
                     tooltip="Profil"
                 ),
             ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-            padding=ft.padding.symmetric(horizontal=30, vertical=15),
+            padding=ft.Padding.symmetric(horizontal=30, vertical=15),
         )
         
         # Willkommenstext
@@ -1184,7 +1178,7 @@ class AppController:
                     weight=ft.FontWeight.W_500,
                 ),
             ], spacing=5),
-            padding=ft.padding.only(left=30, right=30, top=40, bottom=30),
+            padding=ft.Padding.only(left=30, right=30, top=40, bottom=30),
         )
         
         # Auswertungs-Kachel
@@ -1219,7 +1213,7 @@ class AppController:
                 height=250,
                 on_click=self._show_auswertung,
                 ink=True,
-                border=ft.border.all(1, ft.Colors.OUTLINE),
+                border=ft.Border.all(1, ft.Colors.OUTLINE),
             ),
             padding=ft.Padding.symmetric(horizontal=30),
             alignment=ft.Alignment(0, 0),
@@ -1240,14 +1234,11 @@ def main(page: ft.Page):
     """Entry Point der Anwendung"""
     try:
         # Debug-Informationen
-        print(f"App gestartet - Platform: {page.platform}")
-        print(f"Page width: {page.width}, height: {page.height}")
         
         # App-Controller initialisieren und starten
         app = AppController(page)
         app.start()
     except Exception as e:
-        print(f"Kritischer Fehler beim App-Start: {e}")
         import traceback
         traceback.print_exc()
         
