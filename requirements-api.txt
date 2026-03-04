@@ -1,0 +1,9 @@
+# FastAPI REST API Dependencies
+# Nur für die API erforderlich, nicht für die Flet-App
+
+fastapi==0.109.2
+uvicorn[standard]==0.27.1
+pydantic==2.6.1
+pydantic-settings==2.1.0
+mariadb==1.1.10
+email-validator==2.1.0
